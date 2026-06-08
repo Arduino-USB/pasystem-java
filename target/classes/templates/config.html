@@ -1,0 +1,192 @@
+{% extends "topbar" %}
+
+{% block head %}
+<title>Device Manager</title>
+
+<style>
+    body {
+        font-family: sans-serif;
+        margin: 0;
+        padding: 10px 20px 20px 20px; /* base already offsets topbar */
+        background: #f5f5f5;
+    }
+
+    .client {
+        background: white;
+        padding: 10px;
+        margin-bottom: 10px;
+        border-radius: 6px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .edit-panel {
+        padding: 10px;
+        border-top: 1px solid #ddd;
+    }
+
+    label {
+        display: block;
+        margin: 5px 0;
+    }
+
+    input {
+        width: 100%;
+        padding: 5px;
+        margin-top: 3px;
+    }
+
+    button {
+        margin-top: 10px;
+        padding: 6px 10px;
+        cursor: pointer;
+    }
+
+    .small {
+        font-size: 12px;
+        color: #555;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<h2>Clients</h2>
+<div id="clientList"></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const API_USERS = "/get_users";
+
+const rowMap = {}; // keep DOM rows alive
+
+async function fetchUsers() {
+    try {
+        const res = await fetch(API_USERS);
+        return await res.json();
+    } catch (e) {
+        console.error("Failed to fetch users", e);
+        return [];
+    }
+}
+
+async function fetchSettings(ip) {
+    try {
+        const res = await fetch(`http://${ip}:6742/get_settings`);
+        return await res.json();
+    } catch (e) {
+        console.error("Failed to fetch settings for", ip);
+        return { name: "", volume: 0 };
+    }
+}
+
+async function updateSettings(ip, data) {
+    try {
+        await fetch(`http://${ip}:6742/update_settings`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(data)
+        });
+    } catch (e) {
+        console.error("Update failed for", ip, e);
+    }
+}
+
+function renderUsers(users) {
+    const container = document.getElementById("clientList");
+
+    const seen = new Set();
+
+    users.forEach(user => {
+        seen.add(user.ip);
+
+        let wrapper = rowMap[user.ip];
+
+        if (!wrapper) {
+            wrapper = document.createElement("div");
+            wrapper.className = "client";
+
+            const row = document.createElement("div");
+            row.className = "row";
+
+            row.innerHTML = `
+                <div>
+                    <b class="name"></b>
+                    <div class="small ip"></div>
+                </div>
+            `;
+
+            const btn = document.createElement("button");
+            btn.textContent = "Edit";
+
+            const panel = document.createElement("div");
+            panel.className = "edit-panel";
+            panel.style.display = "none";
+
+            btn.onclick = async () => {
+                if (panel.style.display === "none") {
+                    const settings = await fetchSettings(user.ip);
+
+                    panel.innerHTML = `
+                        <label>
+                            Name:
+                            <input id="name-${user.ip}" value="${settings.name || ""}">
+                        </label>
+
+                        <label>
+                            Volume:
+                            <input id="vol-${user.ip}" type="number" value="${settings.volume || 0}">
+                        </label>
+
+                        <button onclick="save('${user.ip}')">Save</button>
+                    `;
+
+                    panel.style.display = "block";
+                } else {
+                    panel.style.display = "none";
+                }
+            };
+
+            row.appendChild(btn);
+            wrapper.appendChild(row);
+            wrapper.appendChild(panel);
+            container.appendChild(wrapper);
+
+            rowMap[user.ip] = wrapper;
+        }
+
+        wrapper.querySelector(".name").textContent = user.name;
+        wrapper.querySelector(".ip").textContent = user.ip;
+    });
+
+    for (const ip in rowMap) {
+        if (!seen.has(ip)) {
+            rowMap[ip].remove();
+            delete rowMap[ip];
+        }
+    }
+}
+
+window.save = async function(ip) {
+    const name = document.getElementById(`name-${ip}`).value;
+    const volume = Number(document.getElementById(`vol-${ip}`).value);
+
+    await updateSettings(ip, { name, volume });
+};
+
+async function refresh() {
+    const users = await fetchUsers();
+    renderUsers(users);
+}
+
+setInterval(refresh, 1000);
+refresh();
+</script>
+{% endblock %}

@@ -1,0 +1,297 @@
+{% extends "topbar" %}
+
+{% block head %}
+<style>
+	.bell-list {
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+	}
+
+	.bell-item {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+	}
+
+	.bell-item input,
+	#timeInput {
+		padding: 5px;
+	}
+
+	.invalid {
+		background: rgba(255, 0, 0, 0.3);
+	}
+
+	button {
+		padding: 5px 10px;
+		cursor: pointer;
+	}
+
+	#timezoneContainer {
+		margin-bottom: 20px;
+		display: flex;
+		gap: 10px;
+		align-items: center;
+	}
+
+	#timezoneSearch {
+		padding: 5px;
+	}
+
+	#timezoneList {
+		max-height: 150px;
+		overflow-y: auto;
+		border: 1px solid #ccc;
+		display: none;
+		position: absolute;
+		background: white;
+		width: 200px;
+	}
+
+	.timezone-item {
+		padding: 5px;
+		cursor: pointer;
+	}
+
+	.timezone-item:hover {
+		background: #eee;
+	}
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- TIME + TIMEZONE -->
+<div id="timezoneContainer">
+	<input id="timeInput" placeholder="HH:MM:SS AM/PM" />
+	
+	<div style="position: relative;">
+		<input id="timezoneSearch" placeholder="Search timezone..." oninput="filterTimezones()" />
+		<div id="timezoneList"></div>
+	</div>
+
+	<button onclick="setTime()">Set Time</button>
+</div>
+
+<br>
+
+<!-- BELLS -->
+<div class="bell-list" id="bellList"></div>
+
+<br>
+<button onclick="addBell()">+</button>
+<button onclick="saveBells()">Save Bells</button>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+let currentData = [];
+let timezones = [];
+let selectedTimezone = null;
+
+/* ---------------- TIME VALIDATION ---------------- */
+
+function validate12Hour(timeStr) {
+	const regex = /^(0?[1-9]|1[0-2]):[0-5][0-9]:[0-5][0-9]\s?(AM|PM)$/i;
+	return regex.test(timeStr.trim());
+}
+
+function to24Hour(timeStr) {
+	let [time, modifier] = timeStr.trim().split(' ');
+	let [hours, minutes, seconds] = time.split(':');
+
+	hours = parseInt(hours);
+
+	if (modifier.toUpperCase() === 'PM' && hours !== 12) hours += 12;
+	if (modifier.toUpperCase() === 'AM' && hours === 12) hours = 0;
+
+	return `${String(hours).padStart(2,'0')}:${minutes}:${seconds}`;
+}
+
+function to12Hour(timeStr) {
+	let [hours, minutes, seconds] = timeStr.split(':');
+	hours = parseInt(hours);
+
+	let modifier = hours >= 12 ? 'PM' : 'AM';
+	hours = hours % 12 || 12;
+
+	return `${String(hours).padStart(2,'0')}:${minutes}:${seconds} ${modifier}`;
+}
+
+/* ---------------- TIMEZONE ---------------- */
+
+async function fetchTimezones() {
+	const res = await fetch("/get_timezones");
+	timezones = await res.json();
+	renderTimezones(timezones);
+}
+
+function renderTimezones(list) {
+	const box = document.getElementById("timezoneList");
+	box.innerHTML = "";
+
+	list.forEach(tz => {
+		const div = document.createElement("div");
+		div.className = "timezone-item";
+		div.innerText = tz;
+		div.onclick = () => {
+			selectedTimezone = tz;
+			document.getElementById("timezoneSearch").value = tz;
+			box.style.display = "none";
+		};
+		box.appendChild(div);
+	});
+}
+
+function filterTimezones() {
+	const val = document.getElementById("timezoneSearch").value.toLowerCase();
+	const filtered = timezones.filter(tz => tz.toLowerCase().includes(val));
+	renderTimezones(filtered);
+	document.getElementById("timezoneList").style.display = "block";
+}
+
+/* ---------------- TIME SET ---------------- */
+
+function setupTimeValidation() {
+	const input = document.getElementById("timeInput");
+
+	input.oninput = () => {
+		if (!validate12Hour(input.value)) {
+			input.classList.add("invalid");
+		} else {
+			input.classList.remove("invalid");
+		}
+	};
+
+	// auto-add seconds if user forgets
+	input.onblur = () => {
+		if (/^\d{1,2}:\d{2}\s?(AM|PM)$/i.test(input.value)) {
+			input.value = input.value.replace(/(\d{1,2}:\d{2})/, '$1:00');
+		}
+	};
+}
+
+async function setTime() {
+	const input = document.getElementById("timeInput");
+
+	if (!validate12Hour(input.value)) {
+		input.classList.add("invalid");
+		return;
+	} else {
+		input.classList.remove("invalid");
+	}
+
+	if (!selectedTimezone) return;
+
+	const payload = {
+		timezone: selectedTimezone,
+		time: to24Hour(input.value)
+	};
+
+	await fetch("/set_time", {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify(payload)
+	});
+}
+
+/* ---------------- BELLS ---------------- */
+
+function createBell(time="12:00:00 AM") {
+	const div = document.createElement("div");
+	div.className = "bell-item";
+
+	const input = document.createElement("input");
+	input.type = "text";
+	input.value = time;
+	input.placeholder = "HH:MM:SS AM/PM";
+
+	input.oninput = () => {
+		if (!validate12Hour(input.value)) {
+			input.classList.add("invalid");
+		} else {
+			input.classList.remove("invalid");
+		}
+	};
+
+	// auto-add seconds
+	input.onblur = () => {
+		if (/^\d{1,2}:\d{2}\s?(AM|PM)$/i.test(input.value)) {
+			input.value = input.value.replace(/(\d{1,2}:\d{2})/, '$1:00');
+		}
+	};
+
+	const del = document.createElement("button");
+	del.innerText = "-";
+	del.onclick = () => div.remove();
+
+	div.appendChild(input);
+	div.appendChild(del);
+
+	return div;
+}
+
+function render(data) {
+	const list = document.getElementById("bellList");
+
+	if (JSON.stringify(data) === JSON.stringify(currentData)) return;
+
+	list.innerHTML = "";
+	data.forEach(t => {
+		list.appendChild(createBell(to12Hour(t)));
+	});
+
+	currentData = data;
+}
+
+function addBell() {
+	document.getElementById("bellList")
+		.appendChild(createBell());
+}
+
+async function fetchData() {
+	const res = await fetch("/get_bell_data");
+	const text = await res.text();
+
+	if (!text || text === "NONE") return;
+
+	const data = JSON.parse(text);
+	render(data);
+}
+
+async function saveBells() {
+	const inputs = document.querySelectorAll(".bell-item input");
+
+	let valid = true;
+	const data = [];
+
+	inputs.forEach(i => {
+		if (!validate12Hour(i.value)) {
+			i.classList.add("invalid");
+			valid = false;
+		} else {
+			i.classList.remove("invalid");
+			data.push(to24Hour(i.value));
+		}
+	});
+
+	if (!valid) return;
+
+	await fetch("/set_bell_data", {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify(data)
+	});
+
+	currentData = data;
+}
+
+/* ---------------- INIT ---------------- */
+
+fetchData();
+fetchTimezones();
+setupTimeValidation();
+</script>
+{% endblock %}

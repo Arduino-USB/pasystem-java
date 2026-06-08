@@ -1,0 +1,6 @@
+com\pasystem\TemplateRenderer.class
+com\pasystem\HTTPWrapper.class
+com\pasystem\StaticConfig.class
+com\pasystem\ClientMgr.class
+com\pasystem\ServerWebHooks.class
+com\pasystem\App.class
