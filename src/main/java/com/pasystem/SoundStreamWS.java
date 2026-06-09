@@ -35,7 +35,7 @@ public class SoundStreamWS extends AbstractWebSocketHandler {
 
 					if (GlobalSoundQueue.ip_list_changed()) {
 						System.out.println("[SoundStreamWS] IP list changed, sending it");
-						try{session.sendMessage(new TextMessage("__IPS__" + GlobalSoundQueue.get_ip_list()));} catch (Exception e){
+						try{session.sendMessage(new TextMessage(GlobalSoundQueue.get_ip_list()));} catch (Exception e){
 		                    System.out.println("[SoundStreamWS] WS send error, " + e);
 		                }	
 					}
@@ -50,7 +50,7 @@ public class SoundStreamWS extends AbstractWebSocketHandler {
                     
                 }
 
-                System.out.println("[SoundStreamWS] Client disconnected)");
+                System.out.println("[SoundStreamWS] Client disconnected");
                 
             }).start();
 
