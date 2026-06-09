@@ -4,7 +4,8 @@ import io.pebbletemplates.pebble.loader.ClasspathLoader;
 import io.pebbletemplates.pebble.template.PebbleTemplate;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.format.DateTimeFormatter;
 import java.time.LocalTime;
@@ -59,7 +60,7 @@ public class ServerWebHooks {
     @PostMapping("/set_time")
     public void set_time(@RequestBody Map<String, Object> data) {
         clock.set_timezone((String) data.get("timezone"));
-        
+        clock.set_time((String) data.get("time"));
     }
 
 }

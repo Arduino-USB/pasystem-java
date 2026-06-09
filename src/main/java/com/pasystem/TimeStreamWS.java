@@ -1,23 +1,42 @@
 package com.pasystem;
 import org.springframework.web.socket.handler.AbstractWebSocketHandler;
+
+import com.pasystem.FakeClock;
+
 import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.CloseStatus;
+import org.springframework.stereotype.Component;
 import java.util.ArrayList;
 
-
+@Component
 public class TimeStreamWS extends AbstractWebSocketHandler {
     private ArrayList<WebSocketSession> sessions = new ArrayList();
+    private FakeClock clock = new FakeClock();
 
+    
     @Override
-    protected void afterConnectionEstablished(WebSocketSession session) {
+    public void afterConnectionEstablished(WebSocketSession session) {
         System.out.println("[TimeStreamWS] New client connected: " + session);
         this.sessions.add(session);
 
         try{
             new Thread(() -> {
+                System.out.println("[TimeStreamWS] Sending WS data");
+                while (session.isOpen()) {
+                    try {Thread.sleep(500);} catch (Exception e){
+                        System.out.println("[TimeStreamWS] Sleep error, " + e);
+                    }
+                    //Thread.sleep(1000);
+                    try{session.sendMessage(new TextMessage(clock.get_time_clean()));} catch (Exception e){
+                        System.out.println("[TimeStreamWS] WS send error, " + e);
+                    }
+                    
+                }
 
-            });
+                System.out.println("[TimeStreamWS] Exiting thread (client probably disconnected)");
+                
+            }).start();
         } catch (Exception e) {
             System.out.println("[TimeStreamWS] Error occoured ");
             System.out.println(e);
@@ -25,7 +44,7 @@ public class TimeStreamWS extends AbstractWebSocketHandler {
     }
 
     @Override
-    protected void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
+    public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
         System.out.println("[TimeStreamWS] Client disconnected: " + session);
         this.sessions.remove(session);
     }
