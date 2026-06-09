@@ -27,8 +27,8 @@ public class TimeStreamWS extends AbstractWebSocketHandler {
                     try {Thread.sleep(500);} catch (Exception e){
                         System.out.println("[TimeStreamWS] Sleep error, " + e);
                     }
-                    //Thread.sleep(1000);
-                    try{session.sendMessage(new TextMessage(clock.get_time_clean()));} catch (Exception e){
+                    
+                    try{session.sendMessage(new TextMessage(clock.get_time()));} catch (Exception e){
                         System.out.println("[TimeStreamWS] WS send error, " + e);
                     }
                     
