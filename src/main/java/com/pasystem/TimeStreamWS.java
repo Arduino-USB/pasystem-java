@@ -14,7 +14,12 @@ public class TimeStreamWS extends AbstractWebSocketHandler {
     private ArrayList<WebSocketSession> sessions = new ArrayList();
     private FakeClock clock = new FakeClock();
 
-    
+    private static byte[] to_bytes(ByteBuffer buffer) {
+		byte[] data = new byte[buffer.remaining()];
+		buffer.slice().get(data);
+		return data;
+	}
+
     @Override
     public void afterConnectionEstablished(WebSocketSession session) {
         System.out.println("[TimeStreamWS] New client connected: " + session);

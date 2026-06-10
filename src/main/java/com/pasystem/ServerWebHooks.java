@@ -1,22 +1,19 @@
 package com.pasystem;
-import io.pebbletemplates.pebble.PebbleEngine;
-import io.pebbletemplates.pebble.loader.ClasspathLoader;
-import io.pebbletemplates.pebble.template.PebbleTemplate;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import jakarta.servlet.http.HttpServletRequest;
-import java.time.format.DateTimeFormatter;
-import java.time.LocalTime;
-import java.time.ZoneId;
 
+import com.pasystem.BellDataMgr.BellSchedule;
 import com.pasystem.ClientMgr;
 import com.pasystem.TemplateRenderer;
 import com.pasystem.CmdExec;
 import com.pasystem.FakeClock;
+import com.pasystem.BellDataMgr;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.Map;
 
 
@@ -26,19 +23,21 @@ public class ServerWebHooks {
     CmdExec cmd = new CmdExec();
     FakeClock clock = new FakeClock();
     TemplateRenderer renderer = new TemplateRenderer("templates");
-
+	BellDataMgr bell_mgr = new BellDataMgr();
+	
     @GetMapping("/")
     public String index() {
         return renderer.render("main", Map.of());
     }
 
     @GetMapping("/register")
-    public void register(HttpServletRequest request) {
+    public String register(HttpServletRequest request) {
         client_mgr.add_client(request.getRemoteAddr());
+		return "O.K";
     }
 
     @GetMapping("/alive")
-    public String register() {
+    public String alive() {
         return "O.K";
     }
 
@@ -57,10 +56,43 @@ public class ServerWebHooks {
         return new ArrayList<>(ZoneId.getAvailableZoneIds());
     }
 
+	// IN: {"time" : time, "timezone" : timezone}
     @PostMapping("/set_time")
-    public void set_time(@RequestBody Map<String, Object> data) {
+    public String set_time(@RequestBody HashMap<String, Object> data) {
         clock.set_timezone((String) data.get("timezone"));
         clock.set_time((String) data.get("time"));
+		return "O.K";
     }
+	
+	// OUT {"name" : name, "times" [times], "active", t/f}
+	@GetMapping("/get_bells")
+	public ArrayList<BellSchedule> get_bells() {
+		return bell_mgr.get_bells();
+	}
+	
+	// IN: {"name" : name, "times" : times, "active" : false}
+	@PostMapping("/new_bell")
+	public String new_bell(@RequestBody BellSchedule bell_schedule) {
+		bell_mgr.add(bell_schedule);
+		return "O.K";
+	}
 
+	@PostMapping("/remove_bell")
+	public String new_bell(@RequestBody String bell_name) {
+		bell_mgr.remove(bell_name);
+		return "O.K";
+	}
+
+	@PostMapping("/activate_bell")
+	public String activate_bell(@RequestBody String bell_name) {
+		bell_mgr.activate(bell_name);
+		return "O.K";
+	}
+	
+	@PostMapping("/disable_bell")
+	public String disable_bell(@RequestBody String bell_name) {
+		bell_mgr.disable(bell_name);
+		return "O.K";
+	}
+	
 }
