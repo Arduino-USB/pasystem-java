@@ -9,8 +9,6 @@ public class FakeClock {
     private static long offset = 0;
     private static String timezone = "Not/Set";
 
-
-
     public String get_timezone() {
         return timezone;
     }

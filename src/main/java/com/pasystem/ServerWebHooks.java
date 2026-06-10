@@ -12,6 +12,7 @@ import com.pasystem.CmdExec;
 import com.pasystem.FakeClock;
 import com.pasystem.BellDataMgr;
 
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
@@ -30,12 +31,17 @@ public class ServerWebHooks {
         return renderer.render("main", Map.of());
     }
 
+    @GetMapping("/config")
+    public String config() {
+        renderer.render("config", Map.of());
+    }
+
     @GetMapping("/register")
     public String register(HttpServletRequest request) {
         client_mgr.add_client(request.getRemoteAddr());
 		return "O.K";
     }
-
+    
     @GetMapping("/alive")
     public String alive() {
         return "O.K";
@@ -94,5 +100,7 @@ public class ServerWebHooks {
 		bell_mgr.disable(bell_name);
 		return "O.K";
 	}
+
+
 	
 }
