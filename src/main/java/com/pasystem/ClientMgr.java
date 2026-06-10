@@ -6,6 +6,7 @@ import com.pasystem.HTTPWrapper;
 public class ClientMgr {
     private ArrayList<Map<String, String>> clients = new ArrayList<>();
     private Thread  alive_checker_thread = new Thread(() -> alive_checker());
+    private HTTPWrapper requests = new HTTPWrapper();
     private int CLIENT_PORT = 6742;
 
     public ClientMgr(){
@@ -15,7 +16,12 @@ public class ClientMgr {
 
     public void add_client(String ip){
         System.out.println("[add_client] New IP " + ip + " connected");
-        clients.add(Map.of("ip", ip, "name", "UNKNOWN"));
+        try{ String uname = (String) requests.get("http://" + ip + ":" + CLIENT_PORT + "/get_settings").get("name");} catch (Exception e)  {
+            System.out.println("[add_client] Couldn't get settings for '" + ip + "', setting name to UNKNOWN");
+            System.out.println("[add_client] Error: " + e);
+            String uname = "UNKNOWN";
+        }
+        clients.add(Map.of("ip", ip, "name", uname));
     }
 
     public ArrayList<Map<String,String>> get_clients() {
@@ -29,13 +35,13 @@ public class ClientMgr {
             }
         }
 
-        System.out.println("get_user_from_ip] Could not find the username for '" + ip +"' in connected clients");
+        System.out.println("[get_user_from_ip] Could not find the username for '" + ip +"' in connected clients");
         return "UNKNOWN";
     }
 
     private void alive_checker() {
         System.out.println("[alive_checker] Starting alive_checker");
-        HTTPWrapper requests = new HTTPWrapper();
+        
 
         while (true) {
             try {
