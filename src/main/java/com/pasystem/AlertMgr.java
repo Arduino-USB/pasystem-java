@@ -13,7 +13,7 @@ public class AlertMgr {
 
     public void set_status(String ip, String status){
         boolean found = false;
-        for (int i = 0; clients.size(); i++) {
+        for (int i = 0; i < clients.size(); i++) {
             ClientData client = clients.get(i);
 
             if (client.ip.equals(ip)) {
@@ -25,7 +25,7 @@ public class AlertMgr {
         }
 
         if (!found) {
-            System.out.println("[AlertMgr] Setting state to '" + "' for new ip '" + ip + "'");
+            System.out.println("[AlertMgr] Setting state to '" + status + "' for new ip '" + ip + "'");
             ClientData client = new ClientData();
             client.ip = ip;
             client.status = status;
@@ -35,7 +35,7 @@ public class AlertMgr {
     }
 
     public String get_status(String ip){
-        for (int i = 0; clients.size(); i++) {
+        for (int i = 0; i < clients.size(); i++) {
             if (clients.get(i).ip.equals(ip)) {
                 return clients.get(i).status;
             } 

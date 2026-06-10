@@ -33,4 +33,8 @@ public class FakeClock {
 
         offset = wanted_time - current_time;
     }
+
+    public long get_real_timestamp() {
+        return Instant.parse(Instant.now().toString()).toEpochMilli();
+    }
 }

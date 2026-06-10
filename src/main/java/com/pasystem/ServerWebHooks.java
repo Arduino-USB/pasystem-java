@@ -33,7 +33,7 @@ public class ServerWebHooks {
 
     @GetMapping("/config")
     public String config() {
-        renderer.render("config", Map.of());
+        return renderer.render("config", Map.of());
     }
 
     @GetMapping("/register")
@@ -85,7 +85,7 @@ public class ServerWebHooks {
 
 	@PostMapping("/remove_bell")
 	public String new_bell(@RequestBody String bell_name) {
-		bell_mgr.remove(bell_name);
+		bell_mgr.remove_bell(bell_name);
 		return "O.K";
 	}
 

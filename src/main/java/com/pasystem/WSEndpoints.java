@@ -7,6 +7,7 @@ import org.springframework.web.socket.config.annotation.WebSocketHandlerRegistry
 
 import com.pasystem.TimeStreamWS;
 import com.pasystem.SoundStreamWS;
+import com.pasystem.AudioIOWS;
 
 
 @Configuration
@@ -16,12 +17,14 @@ public class WSEndpoints implements WebSocketConfigurer {
     private final TimeStreamWS time_stream;
 	private final SoundStreamWS sound_stream;
 	private final SpeakWS speak_ws;
+    private final AudioIOWS audio_io_ws;
 
 
-    public WSEndpoints(TimeStreamWS time_stream, SoundStreamWS sound_stream, SpeakWS speak_ws) {
+    public WSEndpoints(TimeStreamWS time_stream, SoundStreamWS sound_stream, SpeakWS speak_ws, AudioIOWS audio_io_ws) {
         this.time_stream = time_stream;
 		this.sound_stream = sound_stream;
 		this.speak_ws = speak_ws;
+        this.audio_io_ws = audio_io_ws;
     }
 
     @Override
@@ -29,5 +32,6 @@ public class WSEndpoints implements WebSocketConfigurer {
         registry.addHandler(time_stream, "/time_stream").setAllowedOrigins("*");
         registry.addHandler(sound_stream, "/client_stream").setAllowedOrigins("*");
 		registry.addHandler(speak_ws, "/speak").setAllowedOrigins("*");
+        registry.addHandler(audio_io_ws, "/audio_io").setAllowedOrigins("*");
     }
 }

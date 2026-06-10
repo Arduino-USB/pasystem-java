@@ -16,10 +16,10 @@ public class ClientMgr {
 
     public void add_client(String ip){
         System.out.println("[add_client] New IP " + ip + " connected");
-        try{ String uname = (String) requests.get("http://" + ip + ":" + CLIENT_PORT + "/get_settings").get("name");} catch (Exception e)  {
+        String uname = "UNKNOWN";
+        try{uname = (String) requests.get("http://" + ip + ":" + CLIENT_PORT + "/get_settings").get("name");} catch (Exception e)  {
             System.out.println("[add_client] Couldn't get settings for '" + ip + "', setting name to UNKNOWN");
             System.out.println("[add_client] Error: " + e);
-            String uname = "UNKNOWN";
         }
         clients.add(Map.of("ip", ip, "name", uname));
     }

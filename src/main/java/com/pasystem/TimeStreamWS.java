@@ -7,6 +7,7 @@ import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.stereotype.Component;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 
 @Component
@@ -29,7 +30,7 @@ public class TimeStreamWS extends AbstractWebSocketHandler {
             new Thread(() -> {
                 System.out.println("[TimeStreamWS] Sending WS data");
                 while (session.isOpen()) {
-                    try {Thread.sleep(500);} catch (Exception e){
+                    try {Thread.sleep(100);} catch (Exception e){
                         System.out.println("[TimeStreamWS] Sleep error, " + e);
                     }
                     

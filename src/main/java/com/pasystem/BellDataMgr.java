@@ -44,7 +44,7 @@ public class BellDataMgr {
 	}
 	
 	
-	public static void remove_bell(String name) {
+	public void remove_bell(String name) {
 		
 		for (int i = 0; i < schedules.size(); i++){
 			if (schedules.get(i).name.equals(name)) {
@@ -55,7 +55,7 @@ public class BellDataMgr {
 		
 	}
 	
-	public static void activate(String name){
+	public void activate(String name){
 		for (int i = 0; i < schedules.size(); i++){
 			if (schedules.get(i).name.equals(name)) {
 				System.out.println("[BellDataMgr] Activiating bell '" + name + "'");
@@ -63,7 +63,7 @@ public class BellDataMgr {
 			}
 		}		
 	}
-	public static void disable(String name){
+	public void disable(String name){
 		for (int i = 0; i < schedules.size(); i++){
 			if (schedules.get(i).name.equals(name)) {
 				System.out.println("[BellDataMgr] Deactiviating bell '" + name + "'");
@@ -73,7 +73,7 @@ public class BellDataMgr {
 
 	}
 
-	public static ArrayList<String> get_bell_names() {
+	public ArrayList<String> get_bell_names() {
 		ArrayList<String> bells = new ArrayList();
 		for(int i = 0; i < schedules.size(); i++) {	
 			bells.add(schedules.get(i).name);
@@ -83,25 +83,25 @@ public class BellDataMgr {
 	}
 	
 
-	public static ArrayList<BellSchedule> get_bells() {
+	public ArrayList<BellSchedule> get_bells() {
 		return schedules;
 	}
 
-	public static void add(BellSchedule bell_schedule) {
+	public void add(BellSchedule bell_schedule) {
 		for(int i = 0; i < schedules.size(); i++) {		
 			if (schedules.get(i).name.equals(bell_schedule.name)) {
-				System.out.println("[BellDataMgr] Warning: Bell '" + name + "' already exists, overwriting");
+				System.out.println("[BellDataMgr] Warning: Bell '" + bell_schedule.name + "' already exists, overwriting");
 				schedules.remove(i);
 			}
 		}
 		
-		System.out.println("[BellDataMgr] Added bell '" + name + "'");
+		System.out.println("[BellDataMgr] Added bell '" + bell_schedule.name + "'");
 		schedules.add(bell_schedule);
 		
 	
 	}
 
-	public static void save() {	
+	public void save() {	
 		File config = new File(filename);
 		
 		System.out.println("[BellDataMgr] Writing to config file");
