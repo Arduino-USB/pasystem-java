@@ -27,7 +27,7 @@ import java.util.Queue;
 public class AudioIOWS extends AbstractWebSocketHandler {
     private ArrayList<WebSocketSession> sessions = new ArrayList();
     public Queue<byte[]> queue = new LinkedList<>();
-    private WebSocketSession session_get_stream_lock = null;
+    private volatile  WebSocketSession session_get_stream_lock = null;
     private HashMap<String,Long> speaking_users = new HashMap<>();
     private Object lock = new Object();
     private FakeClock clock = new FakeClock();
@@ -176,6 +176,10 @@ public class AudioIOWS extends AbstractWebSocketHandler {
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
         System.out.println("[AudioIOWS] Client disconnected: " + session);
+
+        if (session == session_get_stream_lock) {
+            session_get_stream_lock = null;
+        }
         this.sessions.remove(session);
     }
 }

@@ -17,15 +17,13 @@
         background-repeat: no-repeat;
         background-image: url('/static/toliet.jpg');
     }
-
     .cont {
         display: flex;
         flex-direction: column;
         gap: 20px;
         align-items: center;
-        margin-top: 10px; /* base already adds spacing */
+        margin-top: 10px; 
     }
-
     .cont .emg {
         width: 100px;
         height: 100px;
@@ -36,12 +34,12 @@
         background-repeat: no-repeat;
         background-position: center;
         transition: background-color 0.2s;
+        border: none;
+        cursor: pointer;
     }
-
     .cont .emg.active {
         background-color: rgba(0, 255, 0, 1);
     }
-
     .cont .p2t {
         width: 200px;
         height: 200px;
@@ -51,18 +49,17 @@
         background-size: 50% 50%;
         background-repeat: no-repeat;
         background-position: center;
+        border: none;
+        cursor: pointer;
     }
-
-    .cont .p2t:active {
+    .cont .p2t:active, .cont .p2t.recording {
         background-color: rgba(1, 69, 115, 1);
     }
-
     .cont .btn-row {
         display: flex;
         flex-direction: row;
         gap: 10px;
     }
-
     .cont .btn-row .btn {
         border-radius: 12.5px;
         width: 50px;
@@ -70,14 +67,13 @@
         background-color: rgba(250, 211, 54, 1);
         border: none;
         cursor: pointer;
+        font-weight: bold;
     }
-
     .cont .btn-row .btn:active {
         background-color: rgba(171, 145, 41, 1);
         background-image: url('issy.png');
         background-size: 50% 50%;
     }
-
     #audioOverlay {
         position: fixed;
         inset: 0;
@@ -87,20 +83,18 @@
         justify-content: center;
         z-index: 99999;
     }
-
     #audioOverlay .box {
         background: white;
         padding: 30px;
         border-radius: 12px;
         text-align: center;
     }
-
     #audioOverlay button {
         margin-top: 10px;
         padding: 10px 20px;
         font-size: 16px;
+        cursor: pointer;
     }
-
     #speakerContainer {
         position: fixed;
         bottom: 20px;
@@ -114,7 +108,6 @@
         max-width: 80%;
         z-index: 9999;
     }
-
     .speakerTag {
         display: flex;
         align-items: center;
@@ -124,11 +117,20 @@
         background: white;
         color: black;
         font-size: 14px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.2);
     }
-
     .speakerTag img {
         width: 18px;
         height: 18px;
+    }
+    .drp select {
+        padding: 8px;
+        border-radius: 5px;
+        font-size: 14px;
+        min-width: 160px;
+    }
+    .dropdown-wrapper {
+        margin: 4px 0;
     }
 </style>
 {% endblock %}
@@ -143,8 +145,7 @@
 </div>
 
 <div class="cont">
-    <button class="p2t"></button>
-
+    <button class="p2t" id="pttBtn"></button>
     <div class="drp" id="userContainer"></div>
     
     <div class="btn-row">
@@ -161,763 +162,329 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="/static/notifications.js"></script>
 <script>
-(() => {
-	/* =========================
-		CONFIG
-	========================= */
-	const API = {
-		users: "/get_users",
-		activeAlarms: "/poll_active_alarms",
-		deactivateAlarm: "/deactive_alarm"
-	};
-
-	const AUDIO = {
-		sampleRate: 48000,
-		channels: 2,
-		chunkSize: 4096
-	};
-
-	/* =========================
-		STATE
-	========================= */
-	let users = {};
-	let dropdowns = [];
-	let alarmAudio = null;
-	let audioUnlocked = false;
-	
-	const speakerState = new Map(); 
-
-	/* WS: ip -> socket */
-	const sockets = new Map();
-
-	/* =========================
-		DOM HELPERS
-	========================= */
-	const $ = (s) => document.querySelector(s);
-
-	function create(tag, props = {}) {
-		const el = document.createElement(tag);
-		Object.assign(el, props);
-		return el;
-	}
-
-	async function unlockAllAudio() {
-		const ctx = IncomingAudio.ensureAudio();
-
-		await ctx.resume();
-
-		audioUnlocked = true;
-
-		document.getElementById("audioOverlay").remove();
-
-		IncomingAudio.init();
-	}
-	/* =========================
-		NOTIFICATIONS (robust)
-	========================= */
-	const Notify = (() => {
-		const container = create("div", { id: "notif-container" });
-		document.body.appendChild(container);
-
-		function show({ title, message, actions = [] }) {
-			const box = create("div", { className: "notif" });
-
-			box.appendChild(create("div", { innerText: title }));
-			box.appendChild(create("div", { innerText: message }));
-
-			for (const a of actions) {
-				const btn = create("button", {
-					innerText: a.label,
-					onclick: () => {
-						a.onClick();
-						box.remove();
-					}
-				});
-				box.appendChild(btn);
-			}
-
-			container.appendChild(box);
-			//setTimeout(() => box.remove(), 10000);
-		}
-
-		return { show };
-	})();
-
-	/* =========================
-		USER SYSTEM
-	========================= */
-	function showSpeaker(user) {
-		const container = document.getElementById("speakerContainer");
-
-		let entry = speakerState.get(user);
-
-		// create UI if first time
-		if (!entry) {
-			const el = document.createElement("div");
-			el.className = "speakerTag";
-
-			el.innerHTML = `
-				<img src="/static/speaker.svg">
-				<span>${user}</span>
-			`;
-
-			container.appendChild(el);
-
-			entry = {
-				el,
-				timeout: null
-			};
-
-			speakerState.set(user, entry);
-		}
-
-		// reset timer (debounce logic)
-		if (entry.timeout) clearTimeout(entry.timeout);
-
-		entry.timeout = setTimeout(() => {
-			entry.el.remove();
-			speakerState.delete(user);
-		}, 1000); // minimum 1 second visibility
-	}
-
-	async function fetchUsers() {
-		try {
-			const res = await fetch(API.users);
-			const data = await res.json();
-
-			// data = [{ip, name}, ...]
-			users = Object.fromEntries(
-				data.map(u => [u.ip, u.name])
-			);
-				
-			console.log("RAW USERS:", data);
-			console.log("PARSED USERS:", users);
-
-			refreshDropdowns();
-		} catch (e) {
-			console.error("get_users failed", e);
-		}
-	}
-
-	function selectedIps() {
-		const first = dropdowns[0]?.value;
-
-		// BROADCAST mode = all users
-		if (first === "BROADCAST") {
-			return Object.keys(users);
-		}
-
-		return dropdowns
-			.map(d => d.value)
-			.filter(v => v && v !== "BROADCAST");
-	}
-
-	function buildSelect(isFirst = false) {
-		const sel = create("select", { className: "userSelect" });
-
-		if (isFirst) {
-			sel.appendChild(new Option("BROADCAST", "BROADCAST"));
-		}
-
-		for (const [ip, name] of Object.entries(users)) {
-			sel.appendChild(new Option(name, ip));
-		}
-
-		sel.onchange = refreshDropdowns;
-		return sel;
-	}
-
-	function addDropdown() {
-		if (dropdowns.length >= Object.keys(users).length) return;
-
-		const sel = buildSelect(false);
-		$("#userContainer").appendChild(sel);
-		dropdowns.push(sel);
-
-		refreshDropdowns();
-	}
-
-	function removeDropdown() {
-		if (dropdowns.length <= 1) return;
-
-		dropdowns.pop().remove();
-		refreshDropdowns();
-	}
-
-	function refreshDropdowns() {
-		const broadcast = dropdowns[0]?.value === "BROADCAST";
-
-		dropdowns.forEach((dd, i) => {
-			const prev = dd.value;
-
-			// rebuild options safely
-			dd.replaceChildren();
-
-			// first dropdown gets BROADCAST option
-			if (i === 0) {
-				dd.appendChild(new Option("BROADCAST", "BROADCAST"));
-			}
-
-			// always show full user list (no filtering)
-			for (const [ip, name] of Object.entries(users)) {
-				dd.appendChild(new Option(name, ip));
-			}
-
-			// restore previous selection if still valid
-			if (prev) {
-				dd.value = prev;
-			}
-		});
-	}
-	/* =========================
-		PTT (WebSocket MULTICAST)
-	========================= */
-	let audioCtx, stream, source;
-
-	function connectSockets(ips) {
-		for (const [ip, ws] of sockets.entries()) {
-			if (!ips.includes(ip)) {
-				ws.close();
-				sockets.delete(ip);
-			}
-		}
-
-		for (const ip of ips) {
-			if (sockets.has(ip)) continue;
-
-			const ws = new WebSocket(`ws://${ip}:6742/play_sound`);
-			ws.binaryType = "arraybuffer";
-
-			ws.onerror = (e) => console.error("WS error", ip, e);
-			ws.onclose = () => sockets.delete(ip);
-
-			sockets.set(ip, ws);
-		}
-	}
-
-	function floatToPCM16(float32) {
-		const buf = new ArrayBuffer(float32.length * 2);
-		const view = new DataView(buf);
-
-		for (let i = 0; i < float32.length; i++) {
-			let s = Math.max(-1, Math.min(1, float32[i]));
-			view.setInt16(i * 2, s * 0x7fff, true);
-		}
-
-		return buf;
-	}
-
-
-	async function createMicStream(retries = 3) {
-		for (let i = 0; i < retries; i++) {
-			try {
-				let stream = await createMicStream();
-
-				const track = stream.getAudioTracks()[0];
-
-				if (track.readyState === "live") {
-					return stream;
-				}
-
-				stream.getTracks().forEach(t => t.stop());
-			} catch (e) {
-				console.warn("mic attempt failed", e);
-			}
-
-			await new Promise(r => setTimeout(r, 300));
-		}
-
-		throw new Error("Mic could not be initialized");
-	}
-
-
-	let speakWs = null;
-	let audioContext = null;
-	let processor = null;
-	let audioStream = null;
-
-	let pttIps = [];
-
-	async function startPTT() {
-		console.log("Started PTT stream");
-
-		pttIps = selectedIps();
-		if (!pttIps.length) {
-			console.log("No IPs selected");
-			return;
-		}
-
-		try {
-			const proto = location.protocol === "https:" ? "wss" : "ws";
-			speakWs = new WebSocket(`${proto}://${location.host}/speak`);
-
-			// IMPORTANT: binary mode
-			speakWs.binaryType = "arraybuffer";
-
-			speakWs.onopen = async () => {
-				console.log("WS OPEN");
-
-				const ws = speakWs;
-
-				// send IPS once (or whenever they change)
-				const ipMsg = "__IPS__" + pttIps.join(" ");
-				ws.send(ipMsg);
-
-				audioStream = await navigator.mediaDevices.getUserMedia({
-					audio: {
-						channelCount: 2,
-						sampleRate: 48000,
-						echoCancellation: true,
-						noiseSuppression: true
-					}
-				});
-
-				console.log("Mic granted");
-
-				audioContext = new (window.AudioContext || window.webkitAudioContext)({
-					sampleRate: 48000
-				});
-
-				const source = audioContext.createMediaStreamSource(audioStream);
-
-				processor = audioContext.createScriptProcessor(4096, 2, 2);
-
-let bufferL = [];
-let bufferR = [];
-
-processor.onaudioprocess = (e) => {
-    const left = e.inputBuffer.getChannelData(0);
-    const right = e.inputBuffer.getChannelData(1);
-
-    for (let i = 0; i < left.length; i++) {
-        bufferL.push(left[i]);
-        bufferR.push(right[i]);
-
-        if (bufferL.length >= 4096) {
-            const pcm16 = new Int16Array(4096 * 2);
-
-            for (let j = 0; j < 4096; j++) {
-                pcm16[j * 2] = bufferL[j] * 0x7fff;
-                pcm16[j * 2 + 1] = bufferR[j] * 0x7fff;
+    let globalUsersList = [];
+    let activeAlertsMap = new Map();
+    let audioContextInitialized = false;
+    let audioCtx = null;
+    let audioIoWs = null;
+    let speakWs = null;
+    let micStream = null;
+    let isRecording = false;
+    let spacePressed = false;
+
+    // Click trigger setup 
+    document.getElementById('enableAudioBtn').onclick = async () => {
+        document.getElementById('audioOverlay').style.display = 'none';
+        initAudioEngine();
+        initWebSockets();
+        
+        // Strict Documentation updates: 1s polling loops ONLY
+        setInterval(fetchUsers, 1000);
+        setInterval(checkAlerts, 1000);
+        
+        fetchUsers();
+    };
+
+    function initAudioEngine() {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000 });
+        audioContextInitialized = true;
+    }
+
+    function initWebSockets() {
+        const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
+        
+        // /audio_io endpoint configuration
+        audioIoWs = new WebSocket(protocol + window.location.host + '/audio_io');
+        audioIoWs.binaryType = 'arraybuffer';
+        
+        audioIoWs.onopen = () => {
+            audioIoWs.send("GET_AUDIO_STREAM");
+        };
+
+        audioIoWs.onmessage = (event) => {
+            if (typeof event.data === 'string') {
+                try {
+                    const activeSpeakers = JSON.parse(event.data);
+                    renderSpeakers(activeSpeakers);
+                } catch(e) {}
+            } else {
+                playRawBytes(event.data);
             }
+        };
 
-            ws.send(pcm16.buffer);
+        // /speak output configuration
+        speakWs = new WebSocket(protocol + window.location.host + '/speak');
+    }
 
-            bufferL = [];
-            bufferR = [];
+    function playRawBytes(arrayBuffer) {
+        if (!audioContextInitialized || !audioCtx) return;
+        const int16Array = new Int16Array(arrayBuffer);
+        if (int16Array.length === 0) return;
+        
+        const float32Array = new Float32Array(int16Array.length);
+        for (let i = 0; i < int16Array.length; i++) {
+            float32Array[i] = int16Array[i] / 32768.0;
+        }
+        
+        const buffer = audioCtx.createBuffer(1, float32Array.length, 48000);
+        buffer.getChannelData(0).set(float32Array);
+        
+        const source = audioCtx.createBufferSource();
+        source.buffer = buffer;
+        source.connect(audioCtx.destination);
+        source.start();
+    }
+
+    function renderSpeakers(speakersList) {
+        const container = document.getElementById('speakerContainer');
+        container.innerHTML = '';
+        speakersList.forEach(speaker => {
+            const tag = document.createElement('div');
+            tag.className = 'speakerTag';
+            tag.innerHTML = `<img src="/static/speaker.svg" alt="spk"> <span>${speaker.name || speaker.ip}</span>`;
+            container.appendChild(tag);
+        });
+    }
+
+    // Dynamic dropdown management
+    async function fetchUsers() {
+        try {
+            const res = await fetch('/get_users');
+            globalUsersList = await res.json();
+            updateDropdownOptions();
+        } catch(e) {}
+    }
+
+    function addUserDropdown() {
+        const container = document.getElementById('userContainer');
+        const wrappers = container.getElementsByClassName('dropdown-wrapper');
+        
+        if (wrappers.length === 1) {
+            const firstSelect = wrappers[0].querySelector('select');
+            if (firstSelect && firstSelect.value === 'BROADCAST') return;
+        }
+
+        const div = document.createElement('div');
+        div.className = 'dropdown-wrapper';
+        const select = document.createElement('select');
+        select.onchange = handleDropdownSelectionChange;
+        div.appendChild(select);
+        container.appendChild(div);
+        
+        updateDropdownOptions();
+    }
+
+    function removeUserDropdown() {
+        const container = document.getElementById('userContainer');
+        if (container.lastChild) {
+            container.removeChild(container.lastChild);
+            updateDropdownOptions();
+            syncIPSelectionToWS();
         }
     }
-};
-				source.connect(processor);
-				processor.connect(audioContext.destination);
-			};
 
-			speakWs.onerror = (e) => {
-				console.error("WS ERROR", e);
-			};
-
-			speakWs.onclose = () => {
-				console.log("WS CLOSED");
-			};
-
-		} catch (e) {
-			console.error("PTT failed", e);
-		}
-	}
-
-	function stopPTT() {
-		console.log("Stopped PTT stream");
-
-		if (processor) {
-			try {
-				processor.disconnect();
-			} catch (e) {
-				console.warn("processor disconnect error", e);
-			}
-			processor = null;
-		}
-
-		if (audioContext) {
-			try {
-				audioContext.close();
-			} catch (e) {
-				console.warn("audioContext close error", e);
-			}
-			audioContext = null;
-		}
-
-		if (audioStream) {
-			audioStream.getTracks().forEach(t => t.stop());
-			audioStream = null;
-		}
-
-		if (speakWs) {
-			try {
-				speakWs.close();
-			} catch (e) {
-				console.warn("ws close error", e);
-			}
-			speakWs = null;
-		}
-
-		pttIps = [];
-	}
-
-	function toggleStream(state) {
-		if (state === "on") startPTT();
-		else stopPTT();
-	}
-
-	/* =========================
-		ALARM SYSTEM
-	========================= */
-	let activeAlarms = new Set();
-
-	function playAlarm() {
-		if (!alarmAudio) {
-			alarmAudio = new Audio("/static/alarm.wav");
-			alarmAudio.loop = true;
-		}
-		alarmAudio.play().catch(() => {});
-	}
-
-	function stopAlarm() {
-		if (!alarmAudio) return;
-		alarmAudio.pause();
-		alarmAudio.currentTime = 0;
-	}
-
-
-	async function toggleAlarm() {
-		const ips = selectedIps();
-		if (!ips.length) return;
-
-		const btn = $("#alarmBtn");
-		const arming = btn.dataset.state !== "armed";
-
-		console.log("==== TOGGLING ALARM ====");
-		console.log("Mode:", arming ? "ARM" : "DISARM");
-		console.log("IPs:", ips);
-
-		const requests = ips.map(ip => {
-			const url = `http://${ip}:6742/${arming ? "arm_alarm" : "disarm_alarm"}`;
-
-			console.log("Sending to:", url);
-
-			return fetch(url, { method: "POST" })
-				.then(res => {
-					console.log("SUCCESS:", ip, res.status);
-					return res;
-				})
-				.catch(err => {
-					console.error("FAILED:", ip, err);
-				});
-		});
-
-		await Promise.all(requests);
-
-		btn.dataset.state = arming ? "armed" : "disarmed";
-		btn.classList.toggle("active", arming);
-
-		console.log("==== DONE ====");
-}
-	
-	function unlockAudio() {
-		document.body.addEventListener("mousedown", () => {
-			ensureAudio().resume();
-		}, { once: true });
-	}
-
-	function handleAlarmUpdate(list) {
-		const newSet = new Set(list);
-
-		for (const user of newSet) {
-			if (!activeAlarms.has(user)) {
-				Notify.show({
-					title: "ALERT",
-					message: `${user} is in distress`,
-					actions: [{
-						label: "DISARM",
-						onClick: async () => {
-							await fetch(API.deactivateAlarm, {
-								method: "POST",
-								headers: { "Content-Type": "application/json" },
-								body: JSON.stringify({ user })
-							});
-						}
-					}]
-				});
-
-				playAlarm();
-			}
-		}
-
-		activeAlarms = newSet;
-
-		if (activeAlarms.size === 0) stopAlarm();
-	}
-	function initAlarmSSE() {
-	const evt = new EventSource(API.activeAlarms);
-
-	evt.onmessage = (e) => {
-		try {
-			const list = JSON.parse(e.data);
-			handleAlarmUpdate(list);
-		} catch (err) {
-			console.error("alarm SSE parse error", err);
-		}
-	};
-
-	evt.onerror = () => {
-		console.warn("alarm SSE disconnected, retrying...");
-		evt.close();
-		setTimeout(initAlarmSSE, 2000);
-	};
-	}
-
-
-
-	const IncomingAudio = (() => {
-	let audioCtx = null;
-
-	// user -> queue of Float32 samples
-	const userBuffers = new Map();
-
-	const FRAME_SIZE = 4096;
-	const CHANNELS = 2;
-
-
-	function base64ToFloat32(base64) {
-		const bin = atob(base64);
-		const buf = new ArrayBuffer(bin.length);
-		const view = new Uint8Array(buf);
-
-		for (let i = 0; i < bin.length; i++) {
-			view[i] = bin.charCodeAt(i);
-		}
-
-		const int16 = new Int16Array(buf);
-		const float32 = new Float32Array(int16.length);
-
-		for (let i = 0; i < int16.length; i++) {
-			float32[i] = int16[i] / 0x7fff;
-		}
-
-		return float32;
-	}
-
-	function ensureUser(user) {
-		if (!userBuffers.has(user)) {
-			userBuffers.set(user, []);
-		}
-	}
-
-	function pushChunk(user, chunk) {
-		ensureUser(user);
-
-		let buf = userBuffers.get(user);
-
-		// flatten chunks into continuous buffer
-		buf.push(...chunk);
-
-		// cap buffer size (prevent memory growth)
-		const MAX_SAMPLES = FRAME_SIZE * 2 * 20; // 20 chunks worth
-		if (buf.length > MAX_SAMPLES) {
-			buf.splice(0, buf.length - MAX_SAMPLES);
-		}
-	}
-
-	function mix(outL, outR) {
-		outL.fill(0);
-		outR.fill(0);
-
-		let activeUsers = 0;
-		const needed = FRAME_SIZE * 2; // stereo
-
-		for (const [user, buf] of userBuffers.entries()) {
-			// wait until enough buffered data exists (jitter buffer)
-			if (buf.length < needed * 3) continue;
-
-			activeUsers++;
-
-			let j = 0;
-			for (let i = 0; i < FRAME_SIZE; i++) {
-				outL[i] += buf[j++];
-				outR[i] += buf[j++];
-			}
-
-			// remove used samples
-			buf.splice(0, needed);
-		}
-
-		// normalize to avoid clipping
-		if (activeUsers > 1) {
-			for (let i = 0; i < FRAME_SIZE; i++) {
-				outL[i] /= activeUsers;
-				outR[i] /= activeUsers;
-			}
-		}
-	}
-	
-	function ensureAudio() {
-		if (!audioCtx) {
-			audioCtx = new AudioContext({ sampleRate: 48000 });
-		}
-		return audioCtx;
-	}
-
-	function initProcessor() {
-		const ctx = ensureAudio();
-
-		processor = ctx.createScriptProcessor(FRAME_SIZE, 0, 2);
-
-		processor.onaudioprocess = (e) => {
-			const outL = e.outputBuffer.getChannelData(0);
-			const outR = e.outputBuffer.getChannelData(1);
-
-			mix(outL, outR);
-		};
-
-		processor.connect(ctx.destination);
-	}
-
-	function initSSE() {
-		const evt = new EventSource("/audio_stream");
-
-		evt.onmessage = (e) => {
-			try {
-				const data = JSON.parse(e.data);
-
-				const float = base64ToFloat32(data.chunk);
-
-				pushChunk(data.user, float);
-				
-				showSpeaker(data.user);
-
-			} catch (err) {
-				console.error("audio SSE error", err);
-			}
-		};
-
-		evt.onerror = () => {
-			console.warn("audio SSE reconnecting...");
-			evt.close();
-			setTimeout(initSSE, 2000);
-		};
-	}
-
-	function init() {
-		initProcessor();
-		initSSE();
-	}
-
-	return {
-		init,
-		ensureAudio
-	};
-})();
-	/* =========================
-		INIT
-	========================= */
-	window.toggleStream = toggleStream;
-	window.addUserDropdown = addDropdown;
-	window.removeUserDropdown = removeDropdown;
-	function init() {
-		const container = $("#userContainer");
-		container.innerHTML = "";
-
-		const first = buildSelect(true);
-		container.appendChild(first);
-		dropdowns = [first];
-
-		$(".p2t").onmousedown = () => toggleStream("on");
-		$(".p2t").onmouseup = () => toggleStream("off");
-		$(".p2t").ontouchstart = () => toggleStream("on");
-		$(".p2t").ontouchend = () => toggleStream("off");
-let spaceHeld = false;
-const pttBtn = document.querySelector(".p2t");
-
-document.addEventListener("visibilitychange", () => {
-    if (document.hidden && spaceHeld) {
-        spaceHeld = false;
-        pttBtn.style.backgroundColor = "rgba(0, 107, 179, 1)";
-        toggleStream("off");
-    }
-});
-
-document.addEventListener("mouseup", () => {
-    if (spaceHeld) {
-        spaceHeld = false;
-        pttBtn.style.backgroundColor = "rgba(0, 107, 179, 1)";
-        toggleStream("off");
-    }
-});
-
-document.addEventListener("touchcancel", () => {
-    if (spaceHeld) {
-        spaceHeld = false;
-        toggleStream("off");
-    }
-});
-
-document.addEventListener("keydown", (e) => {
-    // ignore typing in inputs/selects/textareas
-    const tag = document.activeElement?.tagName;
-
-    if (
-        tag === "INPUT" ||
-        tag === "TEXTAREA" ||
-        tag === "SELECT"
-    ) {
-        return;
-    }
-
-    if (e.code === "Space" && !spaceHeld) {
-        e.preventDefault();
+    function updateDropdownOptions() {
+        const container = document.getElementById('userContainer');
+        const wrappers = container.getElementsByClassName('dropdown-wrapper');
         
-        pttBtn.style.backgroundColor = "rgba(1, 69, 155, 1)";
-        spaceHeld = true;
-        toggleStream("on");
+        if (wrappers.length === 0) {
+            const div = document.createElement('div');
+            div.className = 'dropdown-wrapper';
+            const select = document.createElement('select');
+            select.onchange = handleDropdownSelectionChange;
+            div.appendChild(select);
+            container.appendChild(div);
+        }
+
+        const totalDropdowns = wrappers.length;
+        const currentSelections = Array.from(wrappers).map(w => w.querySelector('select').value);
+
+        Array.from(wrappers).forEach((wrapper, idx) => {
+            const select = wrapper.querySelector('select');
+            const previousVal = currentSelections[idx] || '';
+            select.innerHTML = '';
+
+            if (totalDropdowns === 1) {
+                const opt = document.createElement('option');
+                opt.value = 'BROADCAST';
+                opt.innerText = 'BROADCAST';
+                select.appendChild(opt);
+            }
+
+            globalUsersList.forEach(user => {
+                const isSelectedElsewhere = currentSelections.some((val, sIdx) => sIdx !== idx && val === user.ip);
+                if (!isSelectedElsewhere) {
+                    const opt = document.createElement('option');
+                    opt.value = user.ip;
+                    opt.innerText = user.name;
+                    select.appendChild(opt);
+                }
+            });
+
+            if (previousVal && select.querySelector(`option[value="${previousVal}"]`)) {
+                select.value = previousVal;
+            } else if (select.options.length > 0) {
+                select.selectedIndex = 0;
+            }
+        });
     }
-});
 
-document.addEventListener("keyup", (e) => {
-    if (e.code === "Space") {
-        e.preventDefault();
-
-		pttBtn.style.backgroundColor = "rgba(0, 107, 179, 1)";
-        spaceHeld = false;
-        toggleStream("off");
+    function handleDropdownSelectionChange() {
+        updateDropdownOptions();
+        syncIPSelectionToWS();
     }
-});
 
-// safety: stop transmitting if window loses focus
-window.addEventListener("blur", () => {
-    if (spaceHeld) {
-        spaceHeld = false;
-        toggleStream("off");
+    function getSelectedIPs() {
+        const selects = document.querySelectorAll('#userContainer select');
+        let ips = [];
+        selects.forEach(sel => {
+            if (sel.value === 'BROADCAST') {
+                ips = globalUsersList.map(u => u.ip);
+            } else if (sel.value) {
+                ips.push(sel.value);
+            }
+        });
+        return [...new Set(ips)];
     }
-});
-		const alarmBtn = $("#alarmBtn");
-		alarmBtn.dataset.state = "disarmed";
-		alarmBtn.classList.remove("active");
-		$("#addBtn").onclick = addDropdown;
-		$("#alarmBtn").onclick = toggleAlarm;
-		document.getElementById("enableAudioBtn").onclick = unlockAllAudio;
-		setInterval(fetchUsers, 3000);
 
-		
-		initAlarmSSE();
-		
-		fetchUsers();
-		window.toggleStream = toggleStream;
-		window.addUserDropdown = addDropdown;
-		window.removeUserDropdown = removeDropdown;
-	}
-	
-	init();
-})();
+    function syncIPSelectionToWS() {
+        if (!speakWs || speakWs.readyState !== WebSocket.OPEN) return;
+        const targetIPs = getSelectedIPs();
+        speakWs.send("__IPS__ " + targetIPs.join(" "));
+    }
+
+    // PTT logic stream integration
+    const pttBtn = document.getElementById('pttBtn');
+
+    async function startRecording() {
+        if (isRecording) return;
+        syncIPSelectionToWS(); 
+        
+        try {
+            isRecording = true;
+            pttBtn.classList.add('recording');
+            micStream = await navigator.mediaDevices.getUserMedia({ audio: { sampleRate: 48000, channelCount: 1 } });
+            
+            const source = audioCtx.createMediaStreamSource(micStream);
+            const processor = audioCtx.createScriptProcessor(4096, 1, 1);
+            
+            processor.onaudioprocess = (e) => {
+                if (!isRecording) return;
+                const inputData = e.inputBuffer.getChannelData(0);
+                const buffer = new ArrayBuffer(inputData.length * 2);
+                const view = new DataView(buffer);
+                let offset = 0;
+                for (let i = 0; i < inputData.length; i++, offset += 2) {
+                    let s = Math.max(-1, Math.min(1, inputData[i]));
+                    view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+                }
+                if (speakWs && speakWs.readyState === WebSocket.OPEN) {
+                    speakWs.send(buffer);
+                }
+            };
+
+            source.connect(processor);
+            processor.connect(audioCtx.destination);
+            pttBtn.processorRef = processor;
+            pttBtn.sourceRef = source;
+        } catch(e) {
+            isRecording = false;
+            pttBtn.classList.remove('recording');
+        }
+    }
+
+    function stopRecording() {
+        if (!isRecording) return;
+        isRecording = false;
+        pttBtn.classList.remove('recording');
+        
+        if (pttBtn.processorRef) {
+            pttBtn.processorRef.disconnect();
+            pttBtn.sourceRef.disconnect();
+        }
+        if (micStream) {
+            micStream.getTracks().forEach(t => t.stop());
+        }
+    }
+
+    pttBtn.onmousedown = startRecording;
+    pttBtn.onmouseup = stopRecording;
+    pttBtn.onmouseleave = stopRecording;
+
+    window.onkeydown = (e) => {
+        if (e.code === 'Space' && !spacePressed) {
+            e.preventDefault();
+            spacePressed = true;
+            startRecording();
+        }
+    };
+    window.onkeyup = (e) => {
+        if (e.code === 'Space') {
+            spacePressed = false;
+            stopRecording();
+        }
+    };
+
+    // Alarm integration via matching /set_alert POST framework
+    document.getElementById('alarmBtn').onclick = async () => {
+        const targets = getSelectedIPs();
+        for (const ip of targets) {
+            try {
+                await fetch('/set_alert', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ ip: ip, alert: 'alarm' })
+                });
+            } catch(e) {}
+        }
+    };
+
+    // Cleaned monitoring loops targeting active specs only
+    async function checkAlerts() {
+        try {
+            const res = await fetch('/get_all_alerts');
+            const data = await res.json();
+            
+            data.forEach(item => {
+                const ip = item.ip;
+                item.alerts.forEach(alertStr => {
+                    const uniqueKey = `${ip}_${alertStr}`;
+                    if (!activeAlertsMap.has(uniqueKey)) {
+                        triggerAlertResponse(ip, alertStr, uniqueKey);
+                    }
+                });
+            });
+        } catch(e) {}
+    }
+
+    function triggerAlertResponse(ip, alertStr, uniqueKey) {
+        const audio = new Audio(`/static/${alertStr}.mp3`);
+        audio.loop = true;
+        audio.play().catch(()=>{});
+
+        const btnConfig = {};
+        btnConfig["DISARM"] = async () => {
+            audio.pause();
+            activeAlertsMap.delete(uniqueKey);
+            try {
+                await fetch('/remove_alert', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ ip: ip, alert: alertStr })
+                });
+            } catch(e) {}
+        };
+
+        const modalHandle = showNotification(
+            `Alert Raised`,
+            `Device IP: ${ip} has triggered code: "${alertStr}"`,
+            btnConfig,
+            true
+        );
+
+        activeAlertsMap.set(uniqueKey, { audio: audio, modal: modalHandle });
+    }
 </script>
 {% endblock %}
-

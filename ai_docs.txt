@@ -1,0 +1,529 @@
+main.html
+
+{% extends "topbar" %}
+
+{% block head %}
+
+<title>PA System</title>
+
+<style>
+
+    body {
+
+        display: flex;
+
+        flex-direction: column;
+
+        align-items: center;
+
+        justify-content: flex-start;
+
+        height: 100vh;
+
+        margin: 0;
+
+        padding-top: 10px;
+
+        font-family: sans-serif;
+
+        background-color: #f0f0f0;
+
+        background-size: 100% 100%;
+
+        background-repeat: no-repeat;
+
+        background-image: url('/static/toliet.jpg');
+
+    }
+
+    .cont {
+
+        display: flex;
+
+        flex-direction: column;
+
+        gap: 20px;
+
+        align-items: center;
+
+        margin-top: 10px; /* base already adds spacing */
+
+    }
+
+    .cont .emg {
+
+        width: 100px;
+
+        height: 100px;
+
+        border-radius: 25px;
+
+        background-color: rgba(255, 0 , 0, 1);
+
+        background-image: url('/static/bell.svg');
+
+        background-size: 50% 50%;
+
+        background-repeat: no-repeat;
+
+        background-position: center;
+
+        transition: background-color 0.2s;
+
+    }
+
+    .cont .emg.active {
+
+        background-color: rgba(0, 255, 0, 1);
+
+    }
+
+    .cont .p2t {
+
+        width: 200px;
+
+        height: 200px;
+
+        border-radius: 50px;
+
+        background-color: rgba(0, 107, 179, 1);
+
+        background-image: url('/static/microphone.svg');
+
+        background-size: 50% 50%;
+
+        background-repeat: no-repeat;
+
+        background-position: center;
+
+    }
+
+    .cont .p2t:active {
+
+        background-color: rgba(1, 69, 115, 1);
+
+    }
+
+    .cont .btn-row {
+
+        display: flex;
+
+        flex-direction: row;
+
+        gap: 10px;
+
+    }
+
+    .cont .btn-row .btn {
+
+        border-radius: 12.5px;
+
+        width: 50px;
+
+        height: 50px;
+
+        background-color: rgba(250, 211, 54, 1);
+
+        border: none;
+
+        cursor: pointer;
+
+    }
+
+    .cont .btn-row .btn:active {
+
+        background-color: rgba(171, 145, 41, 1);
+
+        background-image: url('issy.png');
+
+        background-size: 50% 50%;
+
+    }
+
+    #audioOverlay {
+
+        position: fixed;
+
+        inset: 0;
+
+        background: rgba(0,0,0,0.85);
+
+        display: flex;
+
+        align-items: center;
+
+        justify-content: center;
+
+        z-index: 99999;
+
+    }
+
+    #audioOverlay .box {
+
+        background: white;
+
+        padding: 30px;
+
+        border-radius: 12px;
+
+        text-align: center;
+
+    }
+
+    #audioOverlay button {
+
+        margin-top: 10px;
+
+        padding: 10px 20px;
+
+        font-size: 16px;
+
+    }
+
+    #speakerContainer {
+
+        position: fixed;
+
+        bottom: 20px;
+
+        left: 50%;
+
+        transform: translateX(-50%);
+
+        display: flex;
+
+        flex-wrap: wrap;
+
+        gap: 10px;
+
+        justify-content: center;
+
+        align-items: center;
+
+        max-width: 80%;
+
+        z-index: 9999;
+
+    }
+
+    .speakerTag {
+
+        display: flex;
+
+        align-items: center;
+
+        gap: 8px;
+
+        padding: 6px 10px;
+
+        border-radius: 10px;
+
+        background: white;
+
+        color: black;
+
+        font-size: 14px;
+
+    }
+
+    .speakerTag img {
+
+        width: 18px;
+
+        height: 18px;
+
+    }
+
+</style>
+
+{% endblock %}
+
+{% block content %}
+
+<div id="audioOverlay">
+
+    <div class="box">
+
+        <h2>Enable Audio</h2>
+
+        <p>Click to allow sound + voice</p>
+
+        <button id="enableAudioBtn">Enable</button>
+
+    </div>
+
+</div>
+
+<div class="cont">
+
+    <button class="p2t"></button>
+
+    <div class="drp" id="userContainer"></div>
+
+    
+
+    <div class="btn-row">
+
+        <button class="btn" id="addBtn" onclick="addUserDropdown()">[+]</button>
+
+        <button class="btn" onclick="removeUserDropdown()">[-]</button>
+
+    </div>
+
+    
+
+    <br>
+
+    
+
+    <button class="emg" id="alarmBtn"></button>
+
+</div>
+
+<div id="speakerContainer"></div>
+
+{% endblock %}
+
+
+
+add a scripts block that using the following documentation
+
+/get_users GET OUT : [{"ip" : "string", "name" : "string"}]
+
+/get_all_alerts GET OUT : [{"ip" : "string", "alerts" : ["alert", "alert", "etc"]}]
+
+/set_alert POST IN {"ip" : "string", alert: "string"}
+
+/remove_alert POST IN {"ip" : "string", alert: "string"}
+
+/speak WS (basically a ws:// listener that listens to the server for audio bytes in AudioFormat(48000, 16, 1, true, false); (java))
+
+
+/audio_io WS It both captures audio from clients and sends audio to front end so it can be played through speakers. to listen to audio stream, a text message "GET_AUDIO_STREAM" must be sent. there can only be one WS session that sent "GET_AUDIO_STREAM" to /audio_io, and if this user disconnects, they are forgotten. this user must also be the server to prevent snooping
+
+Once you are the listener (by sending) "GET_AUDIO_STREAM". you would get both bin and text from the ws stream.
+
+the bin would have audio, and the text would have a json list of which IPs are speaking, so little speaking indicators can be shown /static/speaker.svg should be the logo next to the name ([SPK.SVG name] [SPK.SVG name2])
+
+the bin will just be bytes in AudioFormat(48000, 16, 1, true, false); (java) that will be routed to the speaker
+
+Make the dropdown show all users via /get_users, and make it update every 1s. Make it like a global IP selector. It should show the names, not the IPs but still select the IPs
+It should have a BROADCAST option that selects all IPs
+The +/- buttons should add more dropdowns. If there is more than 1 dropdown BROADCAST cannot be selected, and the same IP cannot be selected at once (there cannot be the same ip in more than one dropdown)
+
+
+Make it use the big PTT button in the middle to send all data from mic to /speak. Holding space bar should be supported
+Make the alarm button /set_alert_status use the selected IP(s) and set status string to "alarm"
+
+
+/speak is a websocket stream that handles both binary and text inputs. when handling text inputs it checks if text starts with __IPS__. if so, it will set that to the ip list. every time the ip list is changed, /speak must recv a new list (ex "__IPS__ 192.168.0.1 192.168.0.2"). 
+
+
+there should be something that checks /get_all_alerts every 1s and for every "alert", it should play the audio /static/$(ALERT_STRING).mp3, and show a notification (not the regular notifican api, but  a custom api that takes in Title, Notification, {"button_name" : js code, "dismisses" : t/f}) pre
+
+the notificantion api shoulkd be a seperate JS file
+
+there should be a DISARM button that dismisses and sends /remove_alert {"ip" : ip, "alert" : $(ALERT_STRING)}
+topbar.html
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        .topbar {
+            position: fixed;
+            top: 0;
+            right: 0;
+            width: 100%;
+            height: 50px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background-color: #ddd;
+            padding: 0 10px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            z-index: 1000;
+        }
+
+        .topbar .left {
+            display: flex;
+            align-items: center;
+            margin: 50px;
+        }
+
+        .topbar .right {
+            display: flex;
+            align-items: center;
+        }
+
+        .topbar a {
+            width: 40px;
+            height: 40px;
+            display: block;
+            text-decoration: none;
+            margin-left: 10px;
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+        }
+
+        .topbar .config-btn {
+            background-image: url('/static/wrench.svg');
+        }
+
+        .topbar .home-btn {
+            background-image: url('/static/home.svg');
+        }
+
+        .topbar .bell-btn {
+            background-image: url('/static/alarm-clock.svg');
+        }
+
+        #clock {
+            font-size: 30px; 
+            color: #333;
+            font-weight: bold;
+        }
+
+        body {
+            margin: 0;
+            font-family: sans-serif;
+        }
+
+        .container {
+            margin-top: 60px;
+            padding: 20px;
+        }
+    </style>
+
+    {% block head %}{% endblock %}
+</head>
+<body>
+
+<div class="topbar">
+    <div class="left">
+	<div id="date"></div>
+        <div id="clock"></div>
+    </div>
+
+    <div class="right">
+        <a class="home-btn" href="/"></a>
+        <a class="config-btn" href="/config"></a>
+        <a class="bell-btn" href="/bell_config"></a>
+    </div>
+</div>
+
+<div class="container">
+    {% block content %}{% endblock %}
+</div>
+
+{% block scripts %}{% endblock %}
+
+</body>
+</html>
+
+using the following documentation create a new script TAG (not {% block %} bc this is what other templates extend from)
+
+/time_stream WS -> sends a string like "2026-06-11T21:47:19.633552800Z" every 100 ms (the freq doesn't matter and is subject to change, so it shouldnt expect it)
+
+the clock should have the "21:47:19" part and the date should have the "2026-06-11" part of it. Dont add any code to try and be a clock, purely pull all the values from the WS stream. this stream will only every send a string in that exact string
+
+
+bell.html
+{% extends "topbar" %}
+
+{% block head %}
+<style>
+	.bell-list {
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+	}
+
+	.bell-item {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+	}
+
+	.bell-item input,
+	#timeInput {
+		padding: 5px;
+	}
+
+	.invalid {
+		background: rgba(255, 0, 0, 0.3);
+	}
+
+	button {
+		padding: 5px 10px;
+		cursor: pointer;
+	}
+
+	#timezoneContainer {
+		margin-bottom: 20px;
+		display: flex;
+		gap: 10px;
+		align-items: center;
+	}
+
+	#timezoneSearch {
+		padding: 5px;
+	}
+
+	#timezoneList {
+		max-height: 150px;
+		overflow-y: auto;
+		border: 1px solid #ccc;
+		display: none;
+		position: absolute;
+		background: white;
+		width: 200px;
+	}
+
+	.timezone-item {
+		padding: 5px;
+		cursor: pointer;
+	}
+
+	.timezone-item:hover {
+		background: #eee;
+	}
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- TIME + TIMEZONE -->
+<div id="timezoneContainer">
+	<input id="timeInput" placeholder="HH:MM:SS AM/PM" />
+	
+	<div style="position: relative;">
+		<input id="timezoneSearch" placeholder="Search timezone..." oninput="filterTimezones()" />
+		<div id="timezoneList"></div>
+	</div>
+
+	<button onclick="setTime()">Set Time</button>
+</div>
+
+<br>
+
+<!-- BELLS -->
+<div class="bell-list" id="bellList"></div>
+
+<br>
+<button onclick="addBell()">+</button>
+<button onclick="saveBells()">Save Bells</button>
+
+{% endblock %}
+
+add a script {% block %} that uses the following documentation
+
+WARN: there can be no duplicate bell names, so add checks for that (using the notification api (and an Okay button the runs no code and dismisses, tell the user, "Names cannot be used more than once")), bc the code with silently not update
+/get_bells GET OUT [{"name" : name, "times" [times], "active", t/f}]
+/new_bell POST IN {"name" : name, "times" : [times], "active" :  t/f}
+/remove_bell POST IN "bell_name"
+/activate_bell POST IN "bell_name"
+/disable_bell POST IN "bell_name"
+/edit_bell POST IN {"name" : "string", "times", ["time", "time"]} (this overwrites the prevoius times)
+
+Each bell should be a tile (like a rectangle), and there should be a checkbox in the tile for activating (/activate_bell) or disabling (/disable_bell). These actions should use the notification api to say "(De)Activated bell $(BELL_NAME)" with an Okay button that dismissis. there should also be an edit button (/static/pencil.svg) that when pressed, expands the tile into a horizontal rectangle with all of the times and +/- buttons to add more times. Make sure times are in the correct format (HH:MM:SS AM/PM/HH:MM:SS, and send as HH:MM:SS) Make the textbox red and the save button greyed out if not the case . There should be a save button at the bottom that does /edit_bell with above documentation. 

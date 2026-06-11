@@ -7,18 +7,19 @@
     body {
         font-family: sans-serif;
         margin: 0;
-        padding: 10px 20px 20px 20px; /* base already offsets topbar */
+        padding: 10px 20px 20px 20px; 
         background: #f5f5f5;
     }
 
     .client {
         background: white;
-        padding: 10px;
+        padding: 15px;
         margin-bottom: 10px;
         border-radius: 6px;
         display: flex;
         flex-direction: column;
         gap: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
     }
 
     .row {
@@ -30,17 +31,23 @@
     .edit-panel {
         padding: 10px;
         border-top: 1px solid #ddd;
+        margin-top: 5px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
     }
 
     label {
         display: block;
         margin: 5px 0;
+        font-weight: bold;
     }
 
     input {
         width: 100%;
-        padding: 5px;
+        padding: 6px;
         margin-top: 3px;
+        box-sizing: border-box;
     }
 
     button {
@@ -53,6 +60,15 @@
         font-size: 12px;
         color: #555;
     }
+    
+    .config-edit-btn {
+        width: 24px;
+        height: 24px;
+        background: url('/static/pencil.svg') no-repeat center;
+        background-size: contain;
+        border: none;
+        cursor: pointer;
+    }
 </style>
 {% endblock %}
 
@@ -62,131 +78,133 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="/static/notifications.js"></script>
 <script>
-const API_USERS = "/get_users";
+    let internalClientsList = [];
 
-const rowMap = {}; // keep DOM rows alive
+    window.onload = function() {
+        syncClients();
+        setInterval(syncClients, 5000); // Steady background sync cycle execution
+    };
 
-async function fetchUsers() {
-    try {
-        const res = await fetch(API_USERS);
-        return await res.json();
-    } catch (e) {
-        console.error("Failed to fetch users", e);
-        return [];
+    async function syncClients() {
+        try {
+            const res = await fetch('/get_users');
+            internalClientsList = await res.json();
+            renderClientsView();
+        } catch(e) {}
     }
-}
 
-async function fetchSettings(ip) {
-    try {
-        const res = await fetch(`http://${ip}:6742/get_settings`);
-        return await res.json();
-    } catch (e) {
-        console.error("Failed to fetch settings for", ip);
-        return { name: "", volume: 0 };
-    }
-}
-
-async function updateSettings(ip, data) {
-    try {
-        await fetch(`http://${ip}:6742/update_settings`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(data)
+    function renderClientsView() {
+        const listDiv = document.getElementById('clientList');
+        // Preserve expansion view states by tracking open items if active
+        const openPanels = {};
+        internalClientsList.forEach((c, idx) => {
+            const existingPanel = document.getElementById(`panel-config-${idx}`);
+            if (existingPanel && existingPanel.style.display === 'block') {
+                openPanels[c.ip] = true;
+            }
         });
-    } catch (e) {
-        console.error("Update failed for", ip, e);
-    }
-}
 
-function renderUsers(users) {
-    const container = document.getElementById("clientList");
+        listDiv.innerHTML = '';
 
-    const seen = new Set();
-
-    users.forEach(user => {
-        seen.add(user.ip);
-
-        let wrapper = rowMap[user.ip];
-
-        if (!wrapper) {
-            wrapper = document.createElement("div");
-            wrapper.className = "client";
-
-            const row = document.createElement("div");
-            row.className = "row";
-
-            row.innerHTML = `
-                <div>
-                    <b class="name"></b>
-                    <div class="small ip"></div>
+        internalClientsList.forEach((client, idx) => {
+            const clientTile = document.createElement('div');
+            clientTile.className = 'client';
+            
+            clientTile.innerHTML = `
+                <div class="row">
+                    <div>
+                        <b style="font-size: 16px;">${client.name}</b>
+                        <div class="small">IP Address: ${client.ip}</div>
+                    </div>
+                    <button class="config-edit-btn" onclick="expandClientSettings(${idx}, '${client.ip}')"></button>
+                </div>
+                <div class="edit-panel" id="panel-config-${idx}" style="display: ${openPanels[client.ip] ? 'block' : 'none'};">
+                    <div id="settings-loader-${idx}">Loading settings profile from device...</div>
                 </div>
             `;
+            listDiv.appendChild(clientTile);
+        });
+    }
 
-            const btn = document.createElement("button");
-            btn.textContent = "Edit";
-
-            const panel = document.createElement("div");
-            panel.className = "edit-panel";
-            panel.style.display = "none";
-
-            btn.onclick = async () => {
-                if (panel.style.display === "none") {
-                    const settings = await fetchSettings(user.ip);
-
-                    panel.innerHTML = `
-                        <label>
-                            Name:
-                            <input id="name-${user.ip}" value="${settings.name || ""}">
-                        </label>
-
-                        <label>
-                            Volume:
-                            <input id="vol-${user.ip}" type="number" value="${settings.volume || 0}">
-                        </label>
-
-                        <button onclick="save('${user.ip}')">Save</button>
-                    `;
-
-                    panel.style.display = "block";
-                } else {
-                    panel.style.display = "none";
-                }
-            };
-
-            row.appendChild(btn);
-            wrapper.appendChild(row);
-            wrapper.appendChild(panel);
-            container.appendChild(wrapper);
-
-            rowMap[user.ip] = wrapper;
+    async function expandClientSettings(idx, ip) {
+        const panel = document.getElementById(`panel-config-${idx}`);
+        if (panel.style.display === 'block') {
+            panel.style.display = 'none';
+            return;
         }
-
-        wrapper.querySelector(".name").textContent = user.name;
-        wrapper.querySelector(".ip").textContent = user.ip;
-    });
-
-    for (const ip in rowMap) {
-        if (!seen.has(ip)) {
-            rowMap[ip].remove();
-            delete rowMap[ip];
+        
+        panel.style.display = 'block';
+        const loaderContainer = document.getElementById(`settings-loader-${idx}`);
+        
+        try {
+            // Documented direct communication call cross-origin pattern rule
+            const targetUrl = `http://${ip}:6742/get_settings`;
+            const res = await fetch(targetUrl);
+            const settingsData = await res.json();
+            
+            buildDynamicSettingsForm(idx, ip, settingsData);
+        } catch(e) {
+            loaderContainer.innerHTML = `<span style="color:red;">Error connecting directly to hardware unit at ${ip}:6742</span>`;
         }
     }
-}
 
-window.save = async function(ip) {
-    const name = document.getElementById(`name-${ip}`).value;
-    const volume = Number(document.getElementById(`vol-${ip}`).value);
+    function buildDynamicSettingsForm(idx, ip, settings) {
+        const panel = document.getElementById(`panel-config-${idx}`);
+        panel.innerHTML = ''; // Expunge previous load states
 
-    await updateSettings(ip, { name, volume });
-};
+        const formContainer = document.createElement('div');
+        
+        // Loop over indeterminate map keys dictionary cleanly
+        for (const [key, value] of Object.entries(settings)) {
+            const fieldWrapper = document.createElement('div');
+            fieldWrapper.style.marginBottom = '8px';
+            
+            const label = document.createElement('label');
+            label.innerText = `${key}:`;
+            
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.className = `settings-input-${idx}`;
+            input.dataset.settingKey = key;
+            input.value = value;
+            
+            fieldWrapper.appendChild(label);
+            fieldWrapper.appendChild(input);
+            formContainer.appendChild(fieldWrapper);
+        }
 
-async function refresh() {
-    const users = await fetchUsers();
-    renderUsers(users);
-}
+        const saveButton = document.createElement('button');
+        saveButton.innerText = "Save Device Settings";
+        saveButton.onclick = () => saveDeviceSettingsPayload(idx, ip);
+        
+        formContainer.appendChild(saveButton);
+        panel.appendChild(formContainer);
+    }
 
-setInterval(refresh, 1000);
-refresh();
+    async function saveDeviceSettingsPayload(idx, ip) {
+        const inputFields = document.querySelectorAll(`.settings-input-${idx}`);
+        const updatePayload = {};
+
+        inputFields.forEach(field => {
+            const key = field.dataset.settingKey;
+            const val = field.value;
+            updatePayload[key] = val;
+        });
+
+        try {
+            const targetUrl = `http://${ip}:6742/update_settings`;
+            const response = await fetch(targetUrl, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(updatePayload)
+            });
+            
+            showNotification("Hardware Configured", `Direct structural upload modification dispatched to client IP: ${ip} complete.`);
+        } catch(e) {
+            showNotification("Transmission Failure", `Unable to route configuration save frame downstream to target node.`);
+        }
+    }
 </script>
 {% endblock %}

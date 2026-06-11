@@ -42,7 +42,7 @@ public class ServerWebHooks {
         return renderer.render("config", Map.of());
     }
 
-     @GetMapping("/bell")
+     @GetMapping("/bell_config")
     public String bell() {
         return renderer.render("bell", Map.of());
     }
@@ -90,9 +90,9 @@ public class ServerWebHooks {
 
 	// IN: {"time" : time, "timezone" : timezone}
     @PostMapping("/set_time")
-    public String set_time(@RequestBody HashMap<String, Object> data) {
-        clock.set_timezone((String) data.get("timezone"));
-        clock.set_time((String) data.get("time"));
+    public String set_time(@RequestBody HashMap<String, String> data) {
+        clock.set_timezone(data.get("timezone"));
+        clock.set_time(data.get("time"));
 		return "O.K";
     }
 	
@@ -118,6 +118,13 @@ public class ServerWebHooks {
 		return "O.K";
 	}
 
+    // {"name" : "string", "times", ["time", "time"]}
+    @PostMapping("/edit_bell")
+    public String edit_bell(@RequestBody Map<String, Object> data) {
+        bell_mgr.edit((String) data.get("name"), (ArrayList<String>) data.get("times"));
+        return "O.K";
+    }
+
 	@PostMapping("/remove_bell")
 	public String new_bell(@RequestBody String bell_name) {
 		bell_mgr.remove_bell(bell_name);
@@ -139,14 +146,20 @@ public class ServerWebHooks {
 
     /* alert section */
     // OUT : [{"ip" : "string", "active" : "string/null"}]
-    @GetMapping("/get_active_alerts")
+    @GetMapping("/get_all_alerts")
     public ArrayList<ClientData> get_active_alerts() {
-        return alert_mgr.get_all_active();
+        return alert_mgr.get_all_alerts();
     }
 
-    @PostMapping("/set_alert_status")
-    public String set_alert_status(@RequestBody ClientData client) {
-        alert_mgr.set_status(client.ip, client.status);
+    @PostMapping("/set_alert")
+    public String set_alert_status(@RequestBody Map<String, String> client) {
+        alert_mgr.set_alert(client.get("ip"), client.get("alert"));
+        return "O.K";
+    }
+
+    @PostMapping("/remove_alert")
+    public String remove_alert(@RequestBody Map<String, String> client) {
+        alert_mgr.set_alert(client.get("ip"), client.get("alert"));
         return "O.K";
     }
 

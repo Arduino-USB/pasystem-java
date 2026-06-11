@@ -64,6 +64,16 @@ public class BellDataMgr {
 		}		
 	}
 
+
+	public void edit(String name, ArrayList<String> times){
+		for (int i = 0; i < schedules.size(); i++){
+			if (schedules.get(i).name.equals(name)) {
+				System.out.println("[BellDataMgr] Changing bell '" + name + "' times to '" + times + "'");
+				schedules.get(i).times = times;
+			}
+		}		
+	}
+
 	public ArrayList<String> get_active_times() {
 		ArrayList<String> active_times = new ArrayList<>();
 		for (int i = 0; i < schedules.size(); i++){

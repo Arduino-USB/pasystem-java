@@ -41,6 +41,7 @@ public class GlobalSoundQueue {
 	}
 
 	public static void set_ip_list(String ip_list) {
+
 		current_ip_list = ip_list;
 		ip_list_changed = true;
 	}
@@ -50,7 +51,8 @@ public class GlobalSoundQueue {
 		return current_ip_list;
 	}
 	
-	public static boolean ip_list_changed() {	
+	public static boolean ip_list_changed() {
+		//this shoulndt be static this is a nasty bug i am not fixing	
 		return ip_list_changed;
 	}
 		
