@@ -5,12 +5,16 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import jakarta.servlet.http.HttpServletRequest;
 
+import com.pasystem.AlertMgr.ClientData;
+import com.pasystem.AlertMgr;
+
 import com.pasystem.BellDataMgr.BellSchedule;
+import com.pasystem.BellDataMgr;
+
 import com.pasystem.ClientMgr;
 import com.pasystem.TemplateRenderer;
 import com.pasystem.CmdExec;
 import com.pasystem.FakeClock;
-import com.pasystem.BellDataMgr;
 
 import java.time.ZoneId;
 import java.util.ArrayList;
@@ -25,7 +29,9 @@ public class ServerWebHooks {
     FakeClock clock = new FakeClock();
     TemplateRenderer renderer = new TemplateRenderer("templates");
 	BellDataMgr bell_mgr = new BellDataMgr();
-	
+	AlertMgr alert_mgr = new AlertMgr();
+
+    /* ui section */
     @GetMapping("/")
     public String index() {
         return renderer.render("main", Map.of());
@@ -36,6 +42,14 @@ public class ServerWebHooks {
         return renderer.render("config", Map.of());
     }
 
+     @GetMapping("/bell")
+    public String bell() {
+        return renderer.render("bell", Map.of());
+    }
+
+
+
+    /* connect section */
     @GetMapping("/register")
     public String register(HttpServletRequest request) {
         client_mgr.add_client(request.getRemoteAddr());
@@ -46,6 +60,18 @@ public class ServerWebHooks {
     public String alive() {
         return "O.K";
     }
+
+
+    /* user section */
+
+
+    // OUT : [{"ip" : "string", "name" : "string"}]
+    @GetMapping("/get_users")
+    public ArrayList<Map<String,String>> get_users() {
+        return client_mgr.get_clients();
+    }
+
+    /* time section */
 
     @GetMapping("/get_time")
     public String get_time() {
@@ -70,13 +96,22 @@ public class ServerWebHooks {
 		return "O.K";
     }
 	
-	// OUT {"name" : name, "times" [times], "active", t/f}
+
+
+
+    /* bell scetion */
+	// OUT [{"name" : name, "times" [times], "active", t/f}]
 	@GetMapping("/get_bells")
 	public ArrayList<BellSchedule> get_bells() {
 		return bell_mgr.get_bells();
 	}
+
+    @GetMapping("/get_active_bell_times")
+    public ArrayList<String> get_active_bell_times() {
+        return bell_mgr.get_active_times();
+    }
 	
-	// IN: {"name" : name, "times" : times, "active" : false}
+	// IN: {"name" : name, "times" : [times], "active" :  t/f}
 	@PostMapping("/new_bell")
 	public String new_bell(@RequestBody BellSchedule bell_schedule) {
 		bell_mgr.add(bell_schedule);
@@ -100,6 +135,20 @@ public class ServerWebHooks {
 		bell_mgr.disable(bell_name);
 		return "O.K";
 	}
+
+
+    /* alert section */
+    // OUT : [{"ip" : "string", "active" : "string/null"}]
+    @GetMapping("/get_active_alerts")
+    public ArrayList<ClientData> get_active_alerts() {
+        return alert_mgr.get_all_active();
+    }
+
+    @PostMapping("/set_alert_status")
+    public String set_alert_status(@RequestBody ClientData client) {
+        alert_mgr.set_status(client.ip, client.status);
+        return "O.K";
+    }
 
 
 	

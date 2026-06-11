@@ -36,16 +36,18 @@ public class AudioIOWS extends AbstractWebSocketHandler {
         System.out.println("[AudioIOWS] Starting speaking_users clean daemon");
         try {
             new Thread(() -> {
-                int grace = 1;
+                int grace = 1000;
                 while (true) {
                     try {Thread.sleep(100);} catch (Exception e) {
                         System.out.println("[AudioIOWS] There was a problem sleeping, " + e);
                     }
                     synchronized (lock) {
                         String[] speaking_users_keys = speaking_users.keySet().toArray(new String[0]);
+                        long real_timestamp = clock.get_real_timestamp();
                         for (int i = 0; i < speaking_users_keys.length; i++) {
-                            if ((clock.get_real_timestamp() - (long) speaking_users.get(speaking_users_keys[i])) > grace) {
+                            if ((real_timestamp - (long) speaking_users.get(speaking_users_keys[i])) > grace) {
                                 System.out.println("[AudioIOWS] The user '" + speaking_users_keys[i] + "' was been queit longer than the grace period. Removing");
+                                System.out.println("[AudioIOWS] [DEBUG] REAL: '" + real_timestamp + "', LAST : '" + speaking_users.get(speaking_users_keys[i]) + "'");
                                 speaking_users.remove(speaking_users_keys[i]);
                             }
                         }
@@ -102,9 +104,14 @@ public class AudioIOWS extends AbstractWebSocketHandler {
 
                                 synchronized (lock) {
                                     
+                                    byte[] chunk = queue.poll();
 
-                                    try {session.sendMessage(new BinaryMessage(queue.poll()));} catch (Exception e) {
-                                        System.out.println("[AudioIOWS] WS error, " + e);
+                                    if (chunk == null) { 
+                                        continue;
+                                    }
+
+                                    try {session.sendMessage(new BinaryMessage(chunk));} catch (Exception e) {
+                                        System.out.println("[AudioIOWS] WS error (audio thread), " + e);
                                     } 
                                     
                                 }
@@ -119,10 +126,14 @@ public class AudioIOWS extends AbstractWebSocketHandler {
                                 }
 
                                 synchronized (lock) {
+                                    
+                                    if (speaking_users.isEmpty()) {
+                                        continue;
+                                    }
 
                                     String[] speaking_users_keys = speaking_users.keySet().toArray(new String[0]);
                                     try {session.sendMessage(new TextMessage (new ObjectMapper().writeValueAsString(speaking_users_keys)));} catch (Exception e) {
-                                            System.out.println("[AudioIOWS] WS error, " + e);
+                                            System.out.println("[AudioIOWS] WS error (ip thread), " + e);
                                     } 
                                     
                                 }
@@ -146,25 +157,18 @@ public class AudioIOWS extends AbstractWebSocketHandler {
 	@Override
 	public void handleBinaryMessage(WebSocketSession session, BinaryMessage message){
         String ip = session.getRemoteAddress().getAddress().getHostAddress();
-        boolean found = false;
         long timestamp = clock.get_real_timestamp();
+
         synchronized (lock) {
 
-            queue.add(to_bytes(message.getPayload()));
+            if (session_get_stream_lock != null) {
+                
+                queue.add(to_bytes(message.getPayload()));
 
-            String[] speaking_users_keys = speaking_users.keySet().toArray(new String[0]);
-            for (int i = 0; i < speaking_users_keys.length; i++) {
-                if (speaking_users_keys[i].equals(ip)) {
-                    speaking_users.put(speaking_users_keys[i], timestamp);
-                    found = true;
-                }
-            }
-            if (!found) {
+                System.out.println("[AudioIOWS] User '" + ip + "' spoke @ " + timestamp);
                 speaking_users.put(ip, timestamp);
+            
             }
-
-            
-            
         }
 
 	}

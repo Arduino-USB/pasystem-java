@@ -17,7 +17,7 @@ public class AlertMgr {
             ClientData client = clients.get(i);
 
             if (client.ip.equals(ip)) {
-                System.out.println("[AlertMgr] Setting state to '" + "' for exising ip '" + ip + "'");
+                System.out.println("[AlertMgr] Setting state to '" + status + "' for exising ip '" + ip + "'");
                 client.status = status;
                 found = true;
             }
@@ -49,6 +49,19 @@ public class AlertMgr {
 
 
         return client.status;
+    }
+
+    public ArrayList<ClientData> get_all_active() {
+
+        ArrayList<ClientData> active_clients = new ArrayList<>();
+
+        for (int i = 0; i < clients.size(); i++) {
+            if (clients.get(i).status == null){
+                active_clients.add(clients.get(i));
+            }
+        }
+
+        return active_clients;
     }
 
 }

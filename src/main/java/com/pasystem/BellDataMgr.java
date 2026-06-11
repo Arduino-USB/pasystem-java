@@ -63,6 +63,18 @@ public class BellDataMgr {
 			}
 		}		
 	}
+
+	public ArrayList<String> get_active_times() {
+		ArrayList<String> active_times = new ArrayList<>();
+		for (int i = 0; i < schedules.size(); i++){
+			if (schedules.get(i).active == true) {
+				active_times.addAll(schedules.get(i).times);
+			}
+		}
+		return active_times;
+
+	}
+
 	public void disable(String name){
 		for (int i = 0; i < schedules.size(); i++){
 			if (schedules.get(i).name.equals(name)) {

@@ -8,6 +8,7 @@
             font-family: Arial, sans-serif;
             margin: 20px;
         }
+
         #log {
             width: 100%;
             height: 300px;
@@ -17,8 +18,14 @@
             white-space: pre-wrap;
             background: #f8f8f8;
         }
+
         input {
-            width: 300px;
+            width: 400px;
+            margin-bottom: 5px;
+        }
+
+        button {
+            margin-right: 5px;
         }
     </style>
 </head>
@@ -32,8 +39,15 @@
 
 <br><br>
 
-<input id="msg" placeholder="send message..." />
-<button onclick="sendMsg()">Send</button>
+<h3>Send Text</h3>
+<input id="textMsg" placeholder="Enter text message..." />
+<button onclick="sendText()">Send Text</button>
+
+<br><br>
+
+<h3>Send Binary (Hex Bytes)</h3>
+<input id="binMsg" placeholder="Example: 48 65 6C 6C 6F" />
+<button onclick="sendBinary()">Send Binary</button>
 
 <p>Status: <span id="status">Disconnected</span></p>
 
@@ -48,8 +62,8 @@ function log(msg) {
     logBox.scrollTop = logBox.scrollHeight;
 }
 
-function setStatus(s) {
-    document.getElementById("status").textContent = s;
+function setStatus(status) {
+    document.getElementById("status").textContent = status;
 }
 
 function connect() {
@@ -57,17 +71,31 @@ function connect() {
 
     ws = new WebSocket(url);
 
+    // Receive binary frames as ArrayBuffer
+    ws.binaryType = "arraybuffer";
+
     ws.onopen = () => {
         setStatus("Connected");
         log("[OPEN]");
     };
 
     ws.onmessage = (event) => {
-        log("[MESSAGE] " + event.data);
+        if (typeof event.data === "string") {
+            log("[TEXT RECEIVED] " + event.data);
+        } else {
+            const bytes = new Uint8Array(event.data);
+
+            const hex = Array.from(bytes)
+                .map(b => b.toString(16).padStart(2, "0"))
+                .join(" ");
+
+            log("[BINARY RECEIVED] " + hex);
+        }
     };
 
-    ws.onerror = (err) => {
-        log("[ERROR] " + err);
+    ws.onerror = (event) => {
+        log("[ERROR]");
+        console.error(event);
     };
 
     ws.onclose = (event) => {
@@ -77,16 +105,53 @@ function connect() {
 }
 
 function disconnect() {
-    if (ws) ws.close();
+    if (ws) {
+        ws.close();
+    }
 }
 
-function sendMsg() {
-    const msg = document.getElementById("msg").value;
-    if (ws && ws.readyState === 1) {
+function sendText() {
+    const msg = document.getElementById("textMsg").value;
+
+    if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(msg);
-        log("[SENT] " + msg);
+        log("[TEXT SENT] " + msg);
     } else {
         log("[WARN] Not connected");
+    }
+}
+
+function sendBinary() {
+    const hexInput = document.getElementById("binMsg").value.trim();
+
+    if (!(ws && ws.readyState === WebSocket.OPEN)) {
+        log("[WARN] Not connected");
+        return;
+    }
+
+    try {
+        const bytes = hexInput
+            .split(/\s+/)
+            .filter(x => x.length > 0)
+            .map(hex => {
+                const value = parseInt(hex, 16);
+
+                if (isNaN(value) || value < 0 || value > 255) {
+                    throw new Error("Invalid byte: " + hex);
+                }
+
+                return value;
+            });
+
+        const binaryData = new Uint8Array(bytes);
+
+        ws.send(binaryData);
+
+        log("[BINARY SENT] " + bytes.length + " bytes");
+        log("              " + hexInput);
+    }
+    catch (e) {
+        log("[ERROR] " + e.message);
     }
 }
 </script>
