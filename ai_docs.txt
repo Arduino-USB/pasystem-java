@@ -526,4 +526,83 @@ WARN: there can be no duplicate bell names, so add checks for that (using the no
 /disable_bell POST IN "bell_name"
 /edit_bell POST IN {"name" : "string", "times", ["time", "time"]} (this overwrites the prevoius times)
 
-Each bell should be a tile (like a rectangle), and there should be a checkbox in the tile for activating (/activate_bell) or disabling (/disable_bell). These actions should use the notification api to say "(De)Activated bell $(BELL_NAME)" with an Okay button that dismissis. there should also be an edit button (/static/pencil.svg) that when pressed, expands the tile into a horizontal rectangle with all of the times and +/- buttons to add more times. Make sure times are in the correct format (HH:MM:SS AM/PM/HH:MM:SS, and send as HH:MM:SS) Make the textbox red and the save button greyed out if not the case . There should be a save button at the bottom that does /edit_bell with above documentation. 
+Each bell should be a tile (like a rectangle), and there should be a checkbox in the tile for activating (/activate_bell) or disabling (/disable_bell). These actions should use the notification api to say "(De)Activated bell $(BELL_NAME)" <= depending on the action. with an Okay button that dismissis. there should also be an edit button (/static/pencil.svg) that when pressed, expands the tile into a horizontal rectangle with all of the times and +/- buttons to add more times. Make sure times are in the correct format (HH:MM:SS AM/PM/HH:MM:SS, and send as HH:MM:SS) Make the textbox red and the save button greyed out if not the case . There should be a save button at the bottom that does /edit_bell with above documentation. 
+
+
+
+config.html
+{% extends "topbar" %}
+
+{% block head %}
+<title>Device Manager</title>
+
+<style>
+    body {
+        font-family: sans-serif;
+        margin: 0;
+        padding: 10px 20px 20px 20px; /* base already offsets topbar */
+        background: #f5f5f5;
+    }
+
+    .client {
+        background: white;
+        padding: 10px;
+        margin-bottom: 10px;
+        border-radius: 6px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .edit-panel {
+        padding: 10px;
+        border-top: 1px solid #ddd;
+    }
+
+    label {
+        display: block;
+        margin: 5px 0;
+    }
+
+    input {
+        width: 100%;
+        padding: 5px;
+        margin-top: 3px;
+    }
+
+    button {
+        margin-top: 10px;
+        padding: 6px 10px;
+        cursor: pointer;
+    }
+
+    .small {
+        font-size: 12px;
+        color: #555;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<h2>Clients</h2>
+<div id="clientList"></div>
+{% endblock %}
+
+
+/get_users GET OUT [{"ip" : "string", "name" : "string"}]
+
+This should update clients according to /get_users. There should be an edit button (same /static/pencil.svg)
+
+when pressing edit the tile should expand, and call http://IP:6742/get_settings (would return something like {"setting1" : "value1", etc} (realistaclly {"name" : "string", "volume" : int}, but dont expect it)) 
+
+we will use each of these settings, and put Setting1 : [TEXT_BOX] and a save button under all the settings, and when save is pressed http://IP:6742/update_settings is called with the same format {"setting1" : "value1", etc}
+
+
+
+once you are done, show every file, and show full contents. dont hesitate from changing style or adding elements

@@ -56,12 +56,17 @@ public class BellDataMgr {
 	}
 	
 	public void activate(String name){
+
 		for (int i = 0; i < schedules.size(); i++){
 			if (schedules.get(i).name.equals(name)) {
 				System.out.println("[BellDataMgr] Activiating bell '" + name + "'");
 				schedules.get(i).active = true;
+				return;
 			}
-		}		
+		}
+		
+		System.out.println("[BellDataMgr] Bell '" + name + "' not found!");
+
 	}
 
 
@@ -90,8 +95,11 @@ public class BellDataMgr {
 			if (schedules.get(i).name.equals(name)) {
 				System.out.println("[BellDataMgr] Deactiviating bell '" + name + "'");
 				schedules.get(i).active = false;
+				return;
 			}
-		}	
+		}
+		
+		System.out.println("[BellDataMgr] Bell '" + name + "' not found!");
 
 	}
 

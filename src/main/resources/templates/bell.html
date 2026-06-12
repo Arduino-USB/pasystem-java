@@ -2,10 +2,13 @@
 
 {% block head %}
 <style>
+    /* 4-Column Grid Setup */
     .bell-list {
-        display: flex;
-        flex-direction: column;
-        gap: 15px;
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+        gap: 20px;
+        width: 100%;
+        box-sizing: border-box;
     }
 
     .bell-tile {
@@ -16,7 +19,9 @@
         box-shadow: 0 2px 4px rgba(0,0,0,0.05);
         display: flex;
         flex-direction: column;
-        gap: 10px;
+        gap: 12px;
+        height: auto;
+        align-self: start;
     }
 
     .bell-row-header {
@@ -29,12 +34,13 @@
     .bell-meta {
         display: flex;
         align-items: center;
-        gap: 15px;
+        gap: 12px;
     }
 
     .bell-title-text {
         font-weight: bold;
-        font-size: 18px;
+        font-size: 16px;
+        word-break: break-word;
     }
 
     .edit-icon-btn {
@@ -44,12 +50,13 @@
         background-size: contain;
         border: none;
         cursor: pointer;
+        flex-shrink: 0;
     }
 
     .bell-expansion-panel {
         display: none;
         border-top: 1px dashed #ddd;
-        padding-top: 10px;
+        padding-top: 12px;
         flex-direction: column;
         gap: 10px;
     }
@@ -57,33 +64,37 @@
     .time-rows-container {
         display: flex;
         flex-direction: column;
-        gap: 5px;
+        gap: 8px;
     }
 
     .time-input-row {
         display: flex;
         align-items: center;
-        gap: 10px;
+        gap: 8px;
     }
 
-    .bell-item input,
-    #timeContainer input, #timeContainer select {
+    /* Standard Browser Picker Form Layout Stylings */
+    #timeContainer input, #timeContainer select, 
+    .time-input-row input, .tz-search-box {
         padding: 8px;
         border-radius: 4px;
         border: 1px solid #ccc;
         font-size: 14px;
+        background: white;
+        box-sizing: border-box;
     }
 
-    .invalid {
-        background: rgba(255, 0, 0, 0.3) !important;
+    .time-input-row input {
+        width: 100%;
     }
 
     button {
-        padding: 8px 15px;
+        padding: 8px 12px;
         cursor: pointer;
         border-radius: 4px;
         border: 1px solid #ccc;
         background: #fcfcfc;
+        font-size: 14px;
     }
 
     button:hover {
@@ -100,10 +111,11 @@
         border-radius: 8px;
         flex-wrap: wrap;
     }
-    
-    .greyed-out {
-        opacity: 0.5;
-        cursor: not-allowed;
+
+    .tz-search-container {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
     }
 </style>
 {% endblock %}
@@ -115,20 +127,23 @@
     <input type="date" id="systemDatePicker" />
     <input type="time" id="systemTimePicker" step="1" />
     
-    <select id="systemTimezoneSelect">
-        <option value="">Loading timezones...</option>
-    </select>
+    <div class="tz-search-container">
+        <input type="text" id="timezoneFilterInput" placeholder="Search timezone..." oninput="filterTimezones()" class="tz-search-box"/>
+        <select id="systemTimezoneSelect" size="1">
+            <option value="">Loading timezones...</option>
+        </select>
+    </div>
 
     <button style="background: #006bb3; color: white; border: none;" onclick="setSystemTime()">Set System Time</button>
 </div>
 
 <br>
 
-<h3>Configured Bells</h3>
+<h3>Configured Schedules</h3>
 <div class="bell-list" id="bellList"></div>
 
 <br>
-<button style="font-weight: bold;" onclick="createNewBellTile()">+ Add New Bell</button>
+<button style="font-weight: bold; background: #28a745; color: white; border: none; padding: 12px 20px;" onclick="createNewBellTile()">+ Add New Bell Schedule</button>
 
 {% endblock %}
 
@@ -136,45 +151,64 @@
 <script src="/static/notifications.js"></script>
 <script>
     let existingBells = [];
+    let allTimezonesMasterList = [];
 
     window.onload = function() {
         loadBells();
         initTimezoneAndSelectors();
     };
 
-    // Initialize inputs and populate options via documented endpoints
+    // Auto-populate options using documented system backend calls
     async function initTimezoneAndSelectors() {
         try {
-            // Set input defaults matching the current system client date framework
             const now = new Date();
             document.getElementById('systemDatePicker').value = now.toISOString().split('T')[0];
             document.getElementById('systemTimePicker').value = now.toTimeString().split(' ')[0];
 
-            // Fetch list of available zones
+            // Fetch dynamic array from /get_timezones
             const tzRes = await fetch('/get_timezones');
-            const tzList = await tzRes.json();
+            allTimezonesMasterList = await tzRes.json();
             
-            const selectEl = document.getElementById('systemTimezoneSelect');
-            selectEl.innerHTML = '';
-            
-            tzList.forEach(tz => {
-                const opt = document.createElement('option');
-                opt.value = tz;
-                opt.innerText = tz;
-                selectEl.appendChild(opt);
-            });
+            // Populates master copy
+            repopulateTimezoneDropdown(allTimezonesMasterList);
 
-            // Fetch current active zone context selection profile
+            // Set default selected active zone context from /get_timezone
             const activeRes = await fetch('/get_timezone');
             const activeTz = await activeRes.text();
-            selectEl.value = activeTz.replace(/"/g, ''); 
+            document.getElementById('systemTimezoneSelect').value = activeTz.replace(/"/g, ''); 
         } catch(e) {}
     }
 
-    // Post to /set_time using the format: "2026-06-11T21:47:19.633552800Z"
+    function repopulateTimezoneDropdown(list) {
+        const selectEl = document.getElementById('systemTimezoneSelect');
+        selectEl.innerHTML = '';
+        
+        if(list.length === 0) {
+            const opt = document.createElement('option');
+            opt.innerText = "No matching zones found";
+            selectEl.appendChild(opt);
+            return;
+        }
+
+        list.forEach(tz => {
+            const opt = document.createElement('option');
+            opt.value = tz;
+            opt.innerText = tz;
+            selectEl.appendChild(opt);
+        });
+    }
+
+    // Live search filter updates for the timezone dropdown selection list
+    function filterTimezones() {
+        const query = document.getElementById('timezoneFilterInput').value.toLowerCase().trim();
+        const filtered = allTimezonesMasterList.filter(tz => tz.toLowerCase().includes(query));
+        repopulateTimezoneDropdown(filtered);
+    }
+
+    // Post data to /set_time using the target exact layout string requirement
     async function setSystemTime() {
         const dateVal = document.getElementById('systemDatePicker').value;
-        const timeVal = document.getElementById('systemTimePicker').value; // Returns "HH:MM" or "HH:MM:SS"
+        const timeVal = document.getElementById('systemTimePicker').value; 
         const tzVal = document.getElementById('systemTimezoneSelect').value;
 
         if (!dateVal || !timeVal || !tzVal) {
@@ -182,17 +216,15 @@
             return;
         }
 
-        // Standardize seconds if missing on native execution values
         let formattedTime = timeVal;
         if (formattedTime.split(':').length === 2) {
             formattedTime += ":00";
         }
 
-        // Structure target payload token format
         const timestampIso = `${dateVal}T${formattedTime}.000000000Z`;
 
         try {
-            const response = await fetch('/set_time', {
+            await fetch('/set_time', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({ time: timestampIso, timezone: tzVal })
@@ -231,98 +263,80 @@
                 </div>
                 <div class="bell-expansion-panel" id="panel-${index}">
                     <div class="time-rows-container" id="time-container-${index}"></div>
-                    <div style="margin-top:10px; display:flex; gap:10px;">
-                        <button onclick="addTimeInputRow(${index}, '')">+</button>
-                        <button id="save-btn-${index}" onclick="saveBellEdits(${index}, '${bell.name}')">Save Changes</button>
-                        <button style="background:#ff4d4d; color:white; border:none; margin-left:auto;" onclick="deleteBell('${bell.name}')">Delete Bell</button>
+                    <div style="margin-top:12px; display:flex; gap:8px; flex-direction: column;">
+                        <button style="width: 100%;" onclick="addTimeInputRow(${index}, '')">+ Add Time</button>
+                        <button style="width: 100%; background: #006bb3; color: white; border: none;" id="save-btn-${index}" onclick="saveBellEdits(${index}, '${bell.name}')">Save Changes</button>
+                        <button style="width: 100%; background:#ff4d4d; color:white; border:none;" onclick="deleteBell('${bell.name}')">Delete Schedule</button>
                     </div>
                 </div>
             `;
             container.appendChild(tile);
+            
+            // Populate matching rows parsing elements dynamically downstream 
             bell.times.forEach(t => addTimeInputRow(index, t));
         });
     }
 
-    async function toggleBellActive(name, checkbox) {
-        const endpoint = checkbox.checked ? '/activate_bell' : '/disable_bell';
-        const msg = checkbox.checked ? `Activated bell ${name}` : `Disabled bell ${name}`;
-        
-        try {
-            await fetch(endpoint, {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify(name)
-            });
-            showNotification("Status Updated", msg);
-        } catch(e) {}
-    }
+	async function toggleBellActive(name, checkbox) {
+		const endpoint = checkbox.checked ? '/activate_bell' : '/disable_bell';
+		const msg = checkbox.checked ? `Activated bell schedule ${name}` : `Disabled bell schedule ${name}`;
+		
+		try {
+			await fetch(endpoint, {
+				method: 'POST',
+				headers: {'Content-Type': 'application/json'},
+				body: JSON.stringify({ name: name }) // Updated payload object
+			});
+			showNotification("Status Updated", msg);
+		} catch(e) {}
+	}
 
     function toggleEditPanel(idx) {
         const panel = document.getElementById(`panel-${idx}`);
         panel.style.display = (panel.style.display === 'flex') ? 'none' : 'flex';
     }
 
+    // Uses browser default picker API (<input type="time">) matching the main system time styles
     function addTimeInputRow(bellIdx, timeValue) {
         const container = document.getElementById(`time-container-${bellIdx}`);
         const row = document.createElement('div');
         row.className = 'time-input-row';
 
+        // Normalize time elements into 24-hour HH:MM:SS values for the browser picker engine
+        let cleanedTime = timeValue.trim();
+        if (cleanedTime) {
+            const regex12 = /^(0?[1-9]|1[0-2]):([0-5][0-9]):([0-5][0-9])\s+([APap][Mm])$/;
+            const match = cleanedTime.match(regex12);
+            if (match) {
+                let hrs = parseInt(match[1]);
+                const mins = match[2];
+                const secs = match[3];
+                const ampm = match[4].toUpperCase();
+                if (ampm === 'PM' && hrs < 12) hrs += 12;
+                if (ampm === 'AM' && hrs === 12) hrs = 0;
+                cleanedTime = `${hrs.toString().padStart(2, '0')}:${mins}:${secs}`;
+            }
+        }
+
         row.innerHTML = `
-            <input type="text" value="${timeValue}" placeholder="HH:MM:SS AM/PM or HH:MM:SS" oninput="validateTimeInputs(${bellIdx})">
-            <button onclick="this.parentElement.remove(); validateTimeInputs(${bellIdx});">-</button>
+            <input type="time" step="1" value="${cleanedTime}">
+            <button style="background: #ff4d4d; color: white; border: none;" onclick="this.parentElement.remove();">-</button>
         `;
         container.appendChild(row);
-        validateTimeInputs(bellIdx);
-    }
-
-    function validateTimeInputs(bellIdx) {
-        const container = document.getElementById(`time-container-${bellIdx}`);
-        const inputs = container.querySelectorAll('input');
-        const saveBtn = document.getElementById(`save-btn-${bellIdx}`);
-        let allValid = true;
-
-        const regex12 = /^(0?[1-9]|1[0-2]):[0-5][0-9]:[0-5][0-9]\s+[APap][Mm]$/;
-        const regex24 = /^(0?[0-9]|1[0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$/;
-
-        inputs.forEach(input => {
-            const val = input.value.trim();
-            if (regex12.test(val) || regex24.test(val)) {
-                input.classList.remove('invalid');
-            } else {
-                input.classList.add('invalid');
-                allValid = false;
-            }
-        });
-
-        if (allValid && inputs.length > 0) {
-            saveBtn.disabled = false;
-            saveBtn.classList.remove('greyed-out');
-        } else {
-            saveBtn.disabled = true;
-            saveBtn.classList.add('greyed-out');
-        }
-    }
-
-    function cleanTimeValue(val) {
-        val = val.trim();
-        const regex12 = /^(0?[1-9]|1[0-2]):([0-5][0-9]):([0-5][0-9])\s+([APap][Mm])$/;
-        const match = val.match(regex12);
-        if (match) {
-            let hrs = parseInt(match[1]);
-            const mins = match[2];
-            const secs = match[3];
-            const ampm = match[4].toUpperCase();
-            if (ampm === 'PM' && hrs < 12) hrs += 12;
-            if (ampm === 'AM' && hrs === 12) hrs = 0;
-            return `${hrs.toString().padStart(2, '0')}:${mins}:${secs}`;
-        }
-        return val;
     }
 
     async function saveBellEdits(bellIdx, originalName) {
         const container = document.getElementById(`time-container-${bellIdx}`);
         const inputs = container.querySelectorAll('input');
-        const timesArray = Array.from(inputs).map(i => cleanTimeValue(i.value));
+        
+        // Ensure all saved elements are sent downstream in HH:MM:SS layout constraints
+        const timesArray = Array.from(inputs).map(i => {
+            let val = i.value;
+            if (val && val.split(':').length === 2) {
+                val += ":00";
+            }
+            return val;
+        }).filter(val => val !== "");
 
         try {
             await fetch('/edit_bell', {
@@ -330,13 +344,13 @@
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({ name: originalName, times: timesArray })
             });
-            showNotification("Success", "Bell configuration elements saved cleanly!");
+            showNotification("Success", "Bell schedule options saved cleanly!");
             loadBells();
         } catch(e) {}
     }
 
     function createNewBellTile() {
-        const nameInput = prompt("Enter Unique Bell Name:");
+        const nameInput = prompt("Enter Unique Bell Schedule Name:");
         if(!nameInput) return;
         
         const isDuplicate = existingBells.some(b => b.name.toLowerCase() === nameInput.trim().toLowerCase());
@@ -359,15 +373,15 @@
         } catch(e) {}
     }
 
-    async function deleteBell(name) {
-        try {
-            await fetch('/remove_bell', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify(name)
-            });
-            loadBells();
-        } catch(e) {}
-    }
+	async function deleteBell(name) {
+		try {
+			await fetch('/remove_bell', {
+				method: 'POST',
+				headers: {'Content-Type': 'application/json'},
+				body: JSON.stringify({ name: name }) // Updated payload object
+			});
+			loadBells();
+		} catch(e) {}
+	}
 </script>
 {% endblock %}

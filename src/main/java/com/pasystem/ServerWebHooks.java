@@ -115,6 +115,7 @@ public class ServerWebHooks {
 	@PostMapping("/new_bell")
 	public String new_bell(@RequestBody BellSchedule bell_schedule) {
 		bell_mgr.add(bell_schedule);
+        bell_mgr.save();
 		return "O.K";
 	}
 
@@ -122,24 +123,29 @@ public class ServerWebHooks {
     @PostMapping("/edit_bell")
     public String edit_bell(@RequestBody Map<String, Object> data) {
         bell_mgr.edit((String) data.get("name"), (ArrayList<String>) data.get("times"));
+        bell_mgr.save();
         return "O.K";
     }
 
+    // {"name" : "string"}
 	@PostMapping("/remove_bell")
-	public String new_bell(@RequestBody String bell_name) {
-		bell_mgr.remove_bell(bell_name);
+	public String new_bell(@RequestBody Map<String,String> data) {
+		bell_mgr.remove_bell(data.get("name"));
+        bell_mgr.save();
 		return "O.K";
 	}
 
 	@PostMapping("/activate_bell")
-	public String activate_bell(@RequestBody String bell_name) {
-		bell_mgr.activate(bell_name);
+	public String activate_bell(@RequestBody Map<String,String> data) {
+		bell_mgr.activate(data.get("name"));
+        bell_mgr.save();
 		return "O.K";
 	}
 	
 	@PostMapping("/disable_bell")
-	public String disable_bell(@RequestBody String bell_name) {
-		bell_mgr.disable(bell_name);
+	public String disable_bell(@RequestBody Map<String,String> data) {
+		bell_mgr.disable(data.get("name"));
+        bell_mgr.save();
 		return "O.K";
 	}
 
