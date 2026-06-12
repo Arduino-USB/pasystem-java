@@ -15,14 +15,26 @@ public class ClientMgr {
         System.out.println("[ClientMgr] Starting");
         alive_checker_thread.start();
     }
-
     public void add_client(String ip){
         System.out.println("[add_client] New IP " + ip + " connected");
+
         String uname = "UNKNOWN";
-        try{uname = (String) requests.get("http://" + ip + ":" + CLIENT_PORT + "/get_settings").get("name");} catch (Exception e)  {
-            System.out.println("[add_client] Couldn't get settings for '" + ip + "', setting name to UNKNOWN");
+
+        try {
+            Map<String, Object> response =
+                    requests.get("http://" + ip + ":" + CLIENT_PORT + "/get_settings", Map.class);
+
+            Object name = response.get("name"); // or "response" depending on API
+
+            if (name != null) {
+                uname = name.toString();
+            }
+
+        } catch (Exception e) {
+            System.out.println("[add_client] Couldn't get settings for '" + ip + "'");
             System.out.println("[add_client] Error: " + e);
         }
+
         clients.add(Map.of("ip", ip, "name", uname));
     }
 
@@ -43,28 +55,26 @@ public class ClientMgr {
 
     private void alive_checker() {
         System.out.println("[alive_checker] Starting alive_checker");
-        
 
         while (true) {
             try {
                 Thread.sleep(1000);
 
-                for (int i = 0; i < clients.size(); i++) {
+                for (int i = clients.size() - 1; i >= 0; i--) {
                     try {
+                        String ip = clients.get(i).get("ip");
+
                         requests.get(
-                            "http://" + clients.get(i).get("ip")
-                            + ":" 
-                            + CLIENT_PORT
-                            + "/alive"
+                            "http://" + ip + ":" + CLIENT_PORT + "/alive",
+                            Map.class
                         );
+
                     } catch (Exception e) {
-                        System.out.println(
-                            "[alive_checker] There seems to be an issue making the /alive request"
-                        );
+                        System.out.println("[alive_checker] Removing dead client: " + clients.get(i));
                         clients.remove(i);
-                        //System.out.println(e);
                     }
                 }
+
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 break;

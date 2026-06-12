@@ -52,7 +52,8 @@ public class ServerWebHooks {
     /* connect section */
     @GetMapping("/register")
     public String register(HttpServletRequest request) {
-        client_mgr.add_client(request.getRemoteAddr());
+        String ip = request.getRemoteAddr();
+        client_mgr.add_client(ip);
 		return "O.K";
     }
     
