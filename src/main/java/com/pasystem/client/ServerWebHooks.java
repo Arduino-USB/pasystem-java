@@ -12,7 +12,7 @@ public class ServerWebHooks {
     
     @GetMapping("/alive")
     public Map<String, String> alive() {
-        return Map.of("status", "O.K");
+        return Map.of("status", "ok");
     }
 
 
