@@ -27,7 +27,7 @@ public class NetworkMgr {
 
    
 
-    public NetworkMgr() {
+    public NetworkMgr(String pref_name) {
 
         if (instance_created) {
             System.out.println("[NetworkMgr] There can only be one given instance of NetworkMgr, and then it is meant to be used a a static utlity");
@@ -49,6 +49,13 @@ public class NetworkMgr {
             NetworkInterface current_interface = ifaces[i];
             List<InterfaceAddress> addresses = current_interface.getInterfaceAddresses();
 
+			if (current_interface.isVirtual()) {
+				continue;
+			}
+			
+			if (!current_interface.getDisplayName().contains(pref_name)) {
+				continue;
+			}
 
             
             for (int j = 0; j < addresses.size(); j++) {
