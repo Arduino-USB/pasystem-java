@@ -1,12 +1,14 @@
 package com.pasystem.client;
 
+
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Random;
 import java.util.Map;
 
 public class SettingsMgr {
 
-    private static Map<String,String> settings = new HashMap<>();
+    private static Map<String,String> settings = new HashMap<>(Map.of("name", "Unassigned-" + Random().nextInt(10000, 100000), "Microphone", "100", "Speaker", "100"));
 
     public static Map<String,String> get_settings() {
         return settings;
