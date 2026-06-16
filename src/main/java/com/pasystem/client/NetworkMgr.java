@@ -11,10 +11,6 @@ import java.net.InterfaceAddress;
 
 public class NetworkMgr {
 
-
-
-
-
     private static boolean instance_created = false;
     public static IfaceInfo selected_interface = null;
 

@@ -26,8 +26,8 @@ public class ServerWebHooks {
 
 	@PostMapping("/update_settings")
 	public Map<String, String> update_settings(@RequestBody Map<String, String> settings) {
-		SettingsMgr.set_settings(settings);
-		return Map.of("yara yara", "phonk");	
+		SettingsMgr.set_all_settings(settings);
+		return Map.of("status", "ok");	
 	}	
 	
     // just need a (/get_settings and /update_settings) and (/get_alerts, /set_alert, /disable_alert)
