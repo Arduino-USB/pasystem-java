@@ -1,46 +1,52 @@
-package com.pasystem;
+package com.pasystem.client;
 
 import javax.sound.sampled.*;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 
 public class SpeakerMgr {
-    private SourceDataLine speaker;
-    private final Object lock = new Object();
-    private boolean running = false;
-    private final String deviceName;
+    private static boolean instance_created = false;
     
-    private final byte[] write_chunk = new byte[4096];
-    private boolean has_new_data = false;
+    private static SourceDataLine speaker;
+    private static final Object lock = new Object();
+    private static boolean running = false;
+    private static String deviceName;
+    
+    private static final byte[] write_chunk = new byte[960];
+    private static boolean has_new_data = false;
 
+    // Constructor acts as the one-time static initializer
     public SpeakerMgr(String deviceName) {
-        this.deviceName = deviceName;
-        connect();
+        synchronized (lock) {
+            if (instance_created) {
+                System.out.println("[SpeakerMgr] There can only be one given instance of SpeakerMgr, and then it is meant to be used as a static utility.");
+                return;
+            }    
+            SpeakerMgr.deviceName = deviceName;
+            instance_created = true;
+            connect();
+        }
     }
 
     // --- Get Available Speakers ---
-    public List<String> get_speakers() {
+    public static List<String> get_speakers() {
         List<String> speakerList = new ArrayList<>();
         Mixer.Info[] mixers = AudioSystem.getMixerInfo();
         
         for (Mixer.Info info : mixers) {
             try {
                 Mixer mixer = AudioSystem.getMixer(info);
-                // Check if this mixer supports output lines (speakers)
                 Line.Info[] sourceLineInfo = mixer.getSourceLineInfo();
                 if (sourceLineInfo.length > 0) {
                     speakerList.add(info.getName());
                 }
-            } catch (Exception ignored) {
-                // Skip any mixers that fail to open/query
-            }
+            } catch (Exception ignored) {}
         }
         return speakerList;
     }
 
     // --- Core Connection Logic ---
-    private void connect() {
+    private static void connect() {
         synchronized (lock) {
             try {
                 Mixer.Info[] mixers = AudioSystem.getMixerInfo();
@@ -69,7 +75,7 @@ public class SpeakerMgr {
                 running = true;
                 has_new_data = false;
                 
-                new Thread(this::stream_audio_data).start();
+                new Thread(SpeakerMgr::stream_audio_data).start();
                 System.out.println("[SpeakerMgr] Successfully connected to: " + deviceName);
                 
             } catch (Exception e) {
@@ -81,8 +87,10 @@ public class SpeakerMgr {
     }
 
     // --- The Push Function ---
-    public void push(byte[] chunk) {
+    public static void push(byte[] chunk) {
         synchronized (lock) {
+            if (!instance_created) return; 
+            
             int length = Math.min(chunk.length, write_chunk.length);
             System.arraycopy(chunk, 0, write_chunk, 0, length);
             has_new_data = true;
@@ -91,7 +99,7 @@ public class SpeakerMgr {
     }
 
     // --- Background Playback Loop ---
-    private void stream_audio_data() {
+    private static void stream_audio_data() {
         long total_empty_time_ms = 0;
         long max_timeout_ms = 2000; 
 
@@ -146,7 +154,7 @@ public class SpeakerMgr {
     }
 
     // --- Reconnection Logic ---
-    private void handle_disconnect() {
+    private static void handle_disconnect() {
         synchronized (lock) {
             running = false;
             if (speaker != null) {

@@ -51,15 +51,15 @@ public class ServerWebHooks {
 
     /* connect section */
     @GetMapping("/register")
-    public String register(HttpServletRequest request) {
+    public Map<String,String> register(HttpServletRequest request) {
         String ip = request.getRemoteAddr();
         client_mgr.add_client(ip);
-		return "O.K";
+		return Map.of("status", "ok");
     }
     
     @GetMapping("/alive")
-    public String alive() {
-        return "O.K";
+    public Map<String,String> alive() {
+        return Map.of("status", "ok");
     }
 
 
@@ -91,10 +91,10 @@ public class ServerWebHooks {
 
 	// IN: {"time" : time, "timezone" : timezone}
     @PostMapping("/set_time")
-    public String set_time(@RequestBody HashMap<String, String> data) {
+    public Map<String,String> set_time(@RequestBody HashMap<String, String> data) {
         clock.set_timezone(data.get("timezone"));
         clock.set_time(data.get("time"));
-		return "O.K";
+		return Map.of("status", "ok");
     }
 	
 
@@ -114,40 +114,40 @@ public class ServerWebHooks {
 	
 	// IN: {"name" : name, "times" : [times], "active" :  t/f}
 	@PostMapping("/new_bell")
-	public String new_bell(@RequestBody BellSchedule bell_schedule) {
+	public Map<String,String> new_bell(@RequestBody BellSchedule bell_schedule) {
 		bell_mgr.add(bell_schedule);
         bell_mgr.save();
-		return "O.K";
+		return Map.of("status", "ok");
 	}
 
     // {"name" : "string", "times", ["time", "time"]}
     @PostMapping("/edit_bell")
-    public String edit_bell(@RequestBody Map<String, Object> data) {
+    public Map<String,String> edit_bell(@RequestBody Map<String, Object> data) {
         bell_mgr.edit((String) data.get("name"), (ArrayList<String>) data.get("times"));
         bell_mgr.save();
-        return "O.K";
+        return Map.of("status", "ok");
     }
 
     // {"name" : "string"}
 	@PostMapping("/remove_bell")
-	public String new_bell(@RequestBody Map<String,String> data) {
+	public Map<String,String> new_bell(@RequestBody Map<String,String> data) {
 		bell_mgr.remove_bell(data.get("name"));
         bell_mgr.save();
-		return "O.K";
+		return Map.of("status", "ok");
 	}
 
 	@PostMapping("/activate_bell")
-	public String activate_bell(@RequestBody Map<String,String> data) {
+	public Map<String,String> activate_bell(@RequestBody Map<String,String> data) {
 		bell_mgr.activate(data.get("name"));
         bell_mgr.save();
-		return "O.K";
+		return Map.of("status", "ok");
 	}
 	
 	@PostMapping("/disable_bell")
-	public String disable_bell(@RequestBody Map<String,String> data) {
+	public Map<String,String> disable_bell(@RequestBody Map<String,String> data) {
 		bell_mgr.disable(data.get("name"));
         bell_mgr.save();
-		return "O.K";
+		return Map.of("status", "ok");
 	}
 
 
@@ -159,15 +159,15 @@ public class ServerWebHooks {
     }
 
     @PostMapping("/set_alert")
-    public String set_alert_status(@RequestBody Map<String, String> client) {
+    public Map<String,String> set_alert_status(@RequestBody Map<String, String> client) {
         alert_mgr.set_alert(client.get("ip"), client.get("alert"));
-        return "O.K";
+        return Map.of("status", "ok");
     }
 
     @PostMapping("/remove_alert")
-    public String remove_alert(@RequestBody Map<String, String> client) {
+    public Map<String,String> remove_alert(@RequestBody Map<String, String> client) {
         alert_mgr.set_alert(client.get("ip"), client.get("alert"));
-        return "O.K";
+        return Map.of("status", "ok");
     }
 
 
