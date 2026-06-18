@@ -5,7 +5,7 @@ import java.util.stream.Collectors;
 
 public class CmdExec {
 
-    public String run(String command) {
+    public static String run(String command) {
         try {
             // 1. Split the string by spaces to handle command + arguments correctly
             String[] cmdArray = command.split(" ");
