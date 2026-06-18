@@ -1,4 +1,7 @@
-package com.pasystem;
+package com.pasystem.client;
+
+import com.pasystem.client.SpeakerMgr;
+
 
 import java.util.List;
 
