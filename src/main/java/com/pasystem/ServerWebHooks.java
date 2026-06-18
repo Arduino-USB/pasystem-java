@@ -166,9 +166,26 @@ public class ServerWebHooks {
 
     @PostMapping("/remove_alert")
     public Map<String,String> remove_alert(@RequestBody Map<String, String> client) {
-        alert_mgr.set_alert(client.get("ip"), client.get("alert"));
+        alert_mgr.remove_alert(client.get("ip"), client.get("alert"));
         return Map.of("status", "ok");
     }
+
+	//IN: {"alert" : "string", "enabled" : t/f}
+	@PostMapping("/client_side_alert_trip")
+	public Map<String, String> trip_alert_client_side(HttpServletRequest request, @RequestBody Map<String, Object> data) {
+		String ip = (String) request.getRemoteAddr();
+		String alert = (String) data.get("alert");
+		boolean enabled = (Boolean) data.get("enabled");
+		
+		if (enabled) {
+			alert_mgr.set_alert(ip, alert);
+		} else if (!enabled){
+			alert_mgr.remove_alert(ip, alert);
+		}
+		
+		return Map.of("status", "ok");
+		
+	}
 
 
 	

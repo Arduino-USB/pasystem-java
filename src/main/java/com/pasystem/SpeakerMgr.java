@@ -1,8 +1,9 @@
-package com.pasystem.client;
+package com.pasystem;
 
 import javax.sound.sampled.*;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.LinkedBlockingQueue;
 
 public class SpeakerMgr {
     private static boolean instance_created = false;
@@ -12,8 +13,9 @@ public class SpeakerMgr {
     private static boolean running = false;
     private static String deviceName;
     
-    private static final byte[] write_chunk = new byte[960];
-    private static boolean has_new_data = false;
+    // Smooth FIFO shock absorber to prevent back-to-back packets from overwriting each other
+    private static final LinkedBlockingQueue<byte[]> audio_queue = new LinkedBlockingQueue<>(100);
+    private static final int CHUNK_SIZE = 960;
 
     // Constructor acts as the one-time static initializer
     public SpeakerMgr(String deviceName) {
@@ -69,11 +71,11 @@ public class SpeakerMgr {
                 
                 DataLine.Info lineInfo = new DataLine.Info(SourceDataLine.class, format);
                 speaker = (SourceDataLine) mixer.getLine(lineInfo);
-                speaker.open(format);
+                speaker.open(format, 4096); // internal line hardware buffer sizing
                 speaker.start();
                 
                 running = true;
-                has_new_data = false;
+                audio_queue.clear();
                 
                 new Thread(SpeakerMgr::stream_audio_data).start();
                 System.out.println("[SpeakerMgr] Successfully connected to: " + deviceName);
@@ -88,13 +90,12 @@ public class SpeakerMgr {
 
     // --- The Push Function ---
     public static void push(byte[] chunk) {
-        synchronized (lock) {
-            if (!instance_created) return; 
-            
-            int length = Math.min(chunk.length, write_chunk.length);
-            System.arraycopy(chunk, 0, write_chunk, 0, length);
-            has_new_data = true;
-            lock.notifyAll(); 
+        if (!instance_created) return; 
+        
+        // Offer to the queue. If it's completely full, drop the oldest so playback stays in real-time
+        if (!audio_queue.offer(chunk.clone())) {
+            audio_queue.poll();
+            audio_queue.offer(chunk.clone());
         }
     }
 
@@ -102,19 +103,12 @@ public class SpeakerMgr {
     private static void stream_audio_data() {
         long total_empty_time_ms = 0;
         long max_timeout_ms = 2000; 
+        byte[] silence = new byte[CHUNK_SIZE];
 
         while (running) {
             SourceDataLine current_speaker;
             synchronized (lock) {
                 current_speaker = speaker;
-                
-                if (!has_new_data && running) {
-                    try {
-                        lock.wait(10); 
-                    } catch (InterruptedException e) {
-                        break;
-                    }
-                }
             }
 
             if (current_speaker == null || !current_speaker.isOpen()) {
@@ -123,7 +117,7 @@ public class SpeakerMgr {
 
             int spaces_available = current_speaker.available();
 
-            if (spaces_available < write_chunk.length) {
+            if (spaces_available < CHUNK_SIZE) {
                 try {
                     Thread.sleep(10);
                     total_empty_time_ms += 10;
@@ -141,13 +135,18 @@ public class SpeakerMgr {
 
             total_empty_time_ms = 0;
 
-            synchronized (lock) {
-                if (has_new_data) {
-                    current_speaker.write(write_chunk, 0, write_chunk.length);
-                    has_new_data = false; 
-                } else {
-                    byte[] silence = new byte[write_chunk.length];
-                    current_speaker.write(silence, 0, silence.length);
+            // Poll data cleanly out of our concurrent queue buffer
+            byte[] chunk = audio_queue.poll();
+            
+            if (chunk != null) {
+                current_speaker.write(chunk, 0, chunk.length);
+            } else {
+                // Buffer is starving for packets, write a clean slice of silence
+                current_speaker.write(silence, 0, silence.length);
+                try {
+                    Thread.sleep(5); // brief sleep to let incoming network fragments populate the queue
+                } catch (InterruptedException e) {
+                    break;
                 }
             }
         }

@@ -6,9 +6,9 @@ public class AlertMgr {
 
     ArrayList<ClientData> clients = new ArrayList<>();
 
-    public class ClientData {
-        String ip;
-        ArrayList<String> alerts = new ArrayList<>();
+    public static class ClientData {
+        public String ip;
+        public ArrayList<String> alerts = new ArrayList<>();
     }
 
     public void set_all_alerts(String ip, ArrayList<String> alerts){
