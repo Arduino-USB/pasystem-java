@@ -29,4 +29,27 @@ public class HTTPWrapper {
 
         return mapper.readValue(response.body(), type);
     }
+
+
+	public <T> T post(String url, Object body, Class<T> type) throws Exception {
+		HttpRequest request = HttpRequest.newBuilder()
+				.uri(URI.create(url))
+				.header("Content-Type", "application/json")
+				.POST(HttpRequest.BodyPublishers.ofString(
+						mapper.writeValueAsString(body)))
+				.build();
+
+		HttpResponse<String> response = client.send(
+				request,
+				HttpResponse.BodyHandlers.ofString()
+		);
+
+		if (response.statusCode() < 200 || response.statusCode() >= 300) {
+			throw new RuntimeException("HTTP error: " + response.statusCode());
+		}
+
+		return mapper.readValue(response.body(), type);
+	}
+
+
 }
