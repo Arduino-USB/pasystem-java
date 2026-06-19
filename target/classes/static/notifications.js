@@ -1,55 +1,78 @@
-// Dynamic CSS Injection for notifications
+// Dynamic CSS Injection for top-right stacking notifications
 (function() {
     const style = document.createElement('style');
     style.innerHTML = `
-        .custom-noti-overlay {
+        /* The master container in the top-right corner */
+        #custom-noti-container {
             position: fixed;
-            inset: 0;
-            background: rgba(0,0,0,0.6);
+            top: 65px; /* Sits 5px right below your 60px topbar */
+            right: 15px; /* Shifted to the right side */
+            width: 320px;
+            max-height: calc(100vh - 80px); /* Keeps it from flowing off screen */
+            overflow-y: auto; /* Vertically scrolls if there are too many notifications */
             display: flex;
-            align-items: center;
-            justify-content: center;
+            flex-direction: column;
+            gap: 12px; /* Spaces out notifications vertically */
             z-index: 100000;
-            font-family: sans-serif;
+            pointer-events: none; /* Allows clicking items under the empty container space */
+            padding-right: 5px; /* Breathing room for scrollbar */
         }
+        
+        /* Individual Notification Box adjustments */
         .custom-noti-box {
             background: white;
-            padding: 25px;
-            border-radius: 10px;
-            min-width: 300px;
-            max-width: 450px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
-            text-align: center;
+            padding: 15px;
+            border-radius: 8px;
+            width: 100%;
+            box-sizing: border-box;
+            border: 1px solid #e2e8f0; /* Slight border so it stands out against light backgrounds */
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08); /* Softened shadow to blend cleanly with the border */
+            text-align: left; 
+            border-right: 5px solid #006bb3; /* Flipped accent line to the right edge */
+            pointer-events: auto; /* Restores button clicks inside notifications */
+            animation: slideInRight 0.2s ease-out;
         }
+        
         .custom-noti-title {
             margin-top: 0;
+            margin-bottom: 5px;
             color: #333;
-            font-size: 20px;
+            font-size: 16px;
         }
+        
         .custom-noti-msg {
             color: #666;
-            margin: 15px 0 20px 0;
-            font-size: 15px;
+            margin: 5px 0 12px 0;
+            font-size: 13px;
             line-height: 1.4;
         }
+        
         .custom-noti-btns {
             display: flex;
-            gap: 10px;
-            justify-content: center;
+            gap: 8px;
+            justify-content: flex-end; /* Align actions to the bottom right */
             flex-wrap: wrap;
         }
+        
         .custom-noti-btn {
-            padding: 8px 16px;
+            padding: 6px 12px;
             border: none;
-            border-radius: 5px;
+            border-radius: 4px;
             cursor: pointer;
-            font-size: 14px;
+            font-size: 12px;
             background: #006bb3;
             color: white;
-            transition: background 0.2s;
+            transition: background 0.15s;
         }
+        
         .custom-noti-btn:hover {
             background: #014573;
+        }
+
+        /* Slide-in transition from the right edge */
+        @keyframes slideInRight {
+            from { transform: translateX(50px); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
         }
     `;
     document.head.appendChild(style);
@@ -63,9 +86,15 @@
  * @param {boolean} dismisses - Clicking any button clears the box window
  */
 function showNotification(title, message, buttons = {}, dismisses = true) {
-    const overlay = document.createElement('div');
-    overlay.className = 'custom-noti-overlay';
+    // 1. Check for or build the structural master container
+    let container = document.getElementById('custom-noti-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'custom-noti-container';
+        document.body.appendChild(container);
+    }
 
+    // 2. Build the target notification block
     const box = document.createElement('div');
     box.className = 'custom-noti-box';
 
@@ -94,24 +123,25 @@ function showNotification(title, message, buttons = {}, dismisses = true) {
                 new Function(handler)();
             }
             if (dismisses) {
-                overlay.remove();
+                box.remove();
             }
         };
         btnContainer.appendChild(btn);
     }
 
-    // Default Okay button block if empty fallback is needed
+    // Default Dismiss button if no functional configuration object is supplied
     if (Object.keys(buttons).length === 0) {
         const okBtn = document.createElement('button');
         okBtn.className = 'custom-noti-btn';
-        okBtn.innerText = 'Okay';
-        okBtn.onclick = function() { overlay.remove(); };
+        okBtn.innerText = 'Dismiss';
+        okBtn.onclick = function() { box.remove(); };
         btnContainer.appendChild(okBtn);
     }
 
     box.appendChild(btnContainer);
-    overlay.appendChild(box);
-    document.body.appendChild(overlay);
     
-    return overlay; // Returns handle reference if manual dismissal is needed outside
+    // 3. Append to the layout stack
+    container.appendChild(box);
+    
+    return box; // Returns the specific handle reference so you can still programmatically trigger .remove() elsewhere
 }
