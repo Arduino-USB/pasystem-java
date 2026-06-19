@@ -1,0 +1,40 @@
+package com.pasystem.client;
+
+import java.time.format.DateTimeFormatter;
+import java.time.LocalTime;
+import java.time.Instant;
+
+
+public class FakeClock {
+    private static long offset = 0;
+    private static String timezone = "UTC";
+
+    public String get_timezone() {
+        return timezone;
+    }
+
+    public void set_timezone(String timezone) {
+        this.timezone = timezone;
+    }
+
+
+    public String get_time() {
+        return Instant.now().plusMillis(offset).toString();
+    }
+
+    public String get_time_clean() {
+        String time = Instant.now().plusMillis(offset).toString();
+        return time.substring(time.indexOf("T") + 1, time.indexOf("."));
+    }
+
+    public void set_time(String time_to_set) {
+        long current_time = Instant.now().toEpochMilli();
+        long wanted_time = Instant.parse(time_to_set).toEpochMilli();
+
+        offset = wanted_time - current_time;
+    }
+
+    public long get_real_timestamp() {
+        return Instant.now().toEpochMilli();
+    }
+}

@@ -8,7 +8,7 @@ import java.util.Map;
 
 public class SettingsMgr {
 
-    private static Map<String,String> settings = new HashMap<>(Map.of("name", "Unassigned-" + new Random().nextInt(10000, 100000), "Microphone", "100", "Speaker", "100"));
+    private static Map<String,String> settings = new HashMap<>(Map.of("name", "Unassigned-" + new Random().nextInt(10000, 100000), "mic_vol", "100", "spk_vol", "100"));
 
     public static Map<String,String> get_settings() {
         return settings;
@@ -31,6 +31,7 @@ public class SettingsMgr {
     }
 
     public static void set_all_settings(Map<String,String> new_settings) {
+		System.out.println("[SettingsMgr] Set all settings to '" + new_settings + "'");
         settings = new_settings;
     }
 

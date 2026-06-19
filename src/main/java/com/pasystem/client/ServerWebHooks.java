@@ -2,6 +2,7 @@ package com.pasystem.client;
 
 import com.pasystem.client.SettingsMgr;
 import com.pasystem.client.AlertMgrClient;
+import com.pasystem.client.CmdExec;
 
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.CrossOrigin;
@@ -31,6 +32,8 @@ public class ServerWebHooks {
 	@PostMapping("/update_settings")
 	public Map<String, String> update_settings(@RequestBody Map<String, String> settings) {
 		SettingsMgr.set_all_settings(settings);
+		CmdExec.run("pactl set-sink-volume @DEFAULT_SINK@ " + settings.get("spk_vol") + "%");
+		CmdExec.run("pactl set-source-volume @DEFAULT_SOURCE@ " + settings.get("mic_vol") + "%");	
 		return Map.of("status", "ok");	
 	}
 

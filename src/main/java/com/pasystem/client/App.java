@@ -6,6 +6,9 @@ import com.pasystem.client.WSConnectionMgr;
 import com.pasystem.client.SpeakerMgr;
 import com.pasystem.client.MicMgr;
 
+import com.pasystem.client.AudioRecvWS;
+import com.pasystem.client.TimeSyncWS;
+
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
@@ -19,7 +22,7 @@ public class App {
 		new MicMgr("alsa");
 		new NetworkMgr("wlan0");
 		new ConnectionLoop(6741); 
-		new WSConnectionMgr(Map.of("/client_stream", new AudioRecvWS()));
+		new WSConnectionMgr(Map.of("/client_stream", new AudioRecvWS(), "/time_stream", new TimeSyncWS()));
         SpringApplication.run(App.class, args);
         	// add connection loop logic
     // add WS connect socket logic
