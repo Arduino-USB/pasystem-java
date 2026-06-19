@@ -4,10 +4,13 @@ import javax.sound.sampled.*;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.io.BufferedInputStream;
+import java.io.InputStream;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 public class SpeakerMgr {
     private static boolean instance_created = false;
-    
+    private static Mixer current_mixer;
     private static SourceDataLine speaker;
     private static final Object lock = new Object();
     private static boolean running = false;
@@ -16,6 +19,8 @@ public class SpeakerMgr {
     // Smooth FIFO shock absorber to prevent back-to-back packets from overwriting each other
     private static final LinkedBlockingQueue<byte[]> audio_queue = new LinkedBlockingQueue<>(100);
     private static final int CHUNK_SIZE = 960;
+	
+	private static final List<Clip> active_clips = new CopyOnWriteArrayList<>();
 
     // Constructor acts as the one-time static initializer
     public SpeakerMgr(String deviceName) {
@@ -153,28 +158,87 @@ public class SpeakerMgr {
     }
 
     // --- Reconnection Logic ---
-    private static void handle_disconnect() {
-        synchronized (lock) {
-            running = false;
-            if (speaker != null) {
-                try {
-                    speaker.stop();
-                    speaker.close();
-                } catch (Exception ignored) {}
-                speaker = null;
-            }
-        }
+	private static void handle_disconnect() {
+		synchronized (lock) {
+			running = false;
 
-        new Thread(() -> {
-            System.out.println("[SpeakerMgr] Attempting to reconnect...");
-            while (!running) {
-                try {
-                    Thread.sleep(2000); 
-                    connect();
-                } catch (InterruptedException e) {
-                    break;
-                }
-            }
-        }).start();
-    }
+			for (Clip clip : active_clips) {
+				try {
+					clip.stop();
+					clip.close();
+				} catch (Exception ignored) {}
+			}
+
+			active_clips.clear();
+
+			if (speaker != null) {
+				try {
+					speaker.stop();
+					speaker.close();
+				} catch (Exception ignored) {}
+				speaker = null;
+			}
+		}
+
+		new Thread(() -> {
+			System.out.println("[SpeakerMgr] Attempting to reconnect...");
+			while (!running) {
+				try {
+					Thread.sleep(2000);
+					connect();
+				} catch (InterruptedException e) {
+					break;
+				}
+			}
+		}).start();
+	}
+	
+	public static Clip play_file(InputStream input) {
+		synchronized (lock) {
+			if (speaker == null || !speaker.isOpen()) {
+				System.out.println("[SpeakerMgr] Speaker isnt up, can't play alert");
+				return null;
+			}
+
+			try {
+				BufferedInputStream buffered =
+						new BufferedInputStream(input);
+
+				AudioInputStream stream =
+						AudioSystem.getAudioInputStream(buffered);
+
+				Clip clip = AudioSystem.getClip();
+
+				clip.open(stream);
+
+				stream.close(); // IMPORTANT FIX
+
+				clip.setFramePosition(0); // ensure restart-safe
+				clip.loop(Clip.LOOP_CONTINUOUSLY);
+
+				active_clips.add(clip);
+
+				clip.addLineListener(event -> {
+					if (event.getType() == LineEvent.Type.CLOSE) {
+						active_clips.remove(clip);
+					}
+				});
+
+				return clip;
+
+			} catch (Exception e) {
+				System.out.println("[SpeakerMgr] Failed to play alert: " + e.getMessage());
+				return null;
+			}
+		}
+	}
+
+		
+	public static boolean is_up() {
+		synchronized (lock) {
+			return speaker != null
+					&& speaker.isOpen()
+					&& running;
+		}
+	}
 }
