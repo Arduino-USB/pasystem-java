@@ -187,8 +187,8 @@ public class AlertMgrClient {
 	
 	}
 	
-	public static List get_alerts() {
-		return List.of(alerts.keySet.toArray(new String[0]));		
+	public static List<String> get_alerts() {
+		return List.of(alerts.keySet().toArray(new String[0]));		
 	}
 
 	
