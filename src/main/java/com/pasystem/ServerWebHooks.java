@@ -1,5 +1,6 @@
 package com.pasystem;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -23,6 +24,7 @@ import java.util.Map;
 
 
 @RestController
+@CrossOrigin(origins = "*", allowedHeaders = "*")
 public class ServerWebHooks {
     ClientMgr client_mgr = new ClientMgr();
     CmdExec cmd = new CmdExec();
@@ -158,6 +160,7 @@ public class ServerWebHooks {
         return alert_mgr.get_all_alerts();
     }
 
+/*
     @PostMapping("/set_alert")
     public Map<String,String> set_alert_status(@RequestBody Map<String, String> client) {
         alert_mgr.set_alert(client.get("ip"), client.get("alert"));
@@ -169,7 +172,7 @@ public class ServerWebHooks {
         alert_mgr.remove_alert(client.get("ip"), client.get("alert"));
         return Map.of("status", "ok");
     }
-
+*/
 	//IN: {"alert" : "string", "enabled" : t/f}
 	@PostMapping("/client_side_alert_trip")
 	public Map<String, String> trip_alert_client_side(HttpServletRequest request, @RequestBody Map<String, Object> data) {
