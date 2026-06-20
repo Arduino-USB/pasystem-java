@@ -214,7 +214,7 @@ public class SpeakerMgr {
 				stream.close(); // IMPORTANT FIX
 
 				clip.setFramePosition(0); // ensure restart-safe
-				clip.loop(Clip.LOOP_CONTINUOUSLY);
+				//clip.loop(Clip.LOOP_CONTINUOUSLY);
 
 				active_clips.add(clip);
 
@@ -227,7 +227,7 @@ public class SpeakerMgr {
 				return clip;
 
 			} catch (Exception e) {
-				System.out.println("[SpeakerMgr] Failed to play alert: " + e.getMessage());
+				System.out.println("[SpeakerMgr] Failed to play sound stream: " + e.getMessage());
 				return null;
 			}
 		}
