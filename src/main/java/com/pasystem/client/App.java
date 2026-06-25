@@ -10,6 +10,8 @@ import com.pasystem.client.BellTrigger;
 import com.pasystem.client.AudioRecvWS;
 import com.pasystem.client.TimeSyncWS;
 
+import com.pasystem.client.GPIOMgr;
+
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
@@ -24,7 +26,8 @@ public class App {
 		new NetworkMgr("wlan0");
 		new ConnectionLoop(6741); 
 		new WSConnectionMgr(Map.of("/client_stream", new AudioRecvWS(), "/time_stream", new TimeSyncWS()));
-		new BellTrigger(); 
+		new BellTrigger();	
+		new GPIOMgr(Map.of("ALARM", 17)); 
         SpringApplication.run(App.class, args);
 
     }
