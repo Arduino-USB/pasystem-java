@@ -1,0 +1,10 @@
+jshell --class-path "target/classes:$(cat cp.txt)"
+
+
+
+import com.pasystem.client.*;
+import java.util.Map;
+
+new NetworkMgr("wlan0")
+new ConnectionLoop(6741)
+WSConnectionMgr ws_mgr = new WSConnectionMgr(Map.of("/client_stream", new AudioRecvWS()))
