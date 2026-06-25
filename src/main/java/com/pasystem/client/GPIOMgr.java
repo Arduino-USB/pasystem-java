@@ -33,6 +33,7 @@ public class GPIOMgr {
 			instance_created = true;	
 		}
 		
+		System.out.println("[GPIOMgr] Starting GPIO management");		
 		String[] gpio_map_names = gpio_map.keySet().toArray(new String[0]);
 	
 		Context pi4j = null;	
@@ -71,7 +72,9 @@ public class GPIOMgr {
 					GPIOPin current_pin = gpio_list.get(i);
 					// 1 = HIGH, 0 = LOW
 					if (current_pin.pin_obj.state().equals(0)) {
-						System.out.println("[GPIOMgr] Pin with label '" + current_pin.name + "' has been triggerd");
+						if (!current_pin.active) {
+							System.out.println("[GPIOMgr] Pin with label '" + current_pin.name + "' has been triggerd");
+						}
 						current_pin.active = true;
 					}
 				} 	

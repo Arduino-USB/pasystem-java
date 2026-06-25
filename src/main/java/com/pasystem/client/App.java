@@ -23,7 +23,7 @@ public class App {
     public static void main(String[] args) {
 		new SpeakerMgr("alsa");
 		new MicMgr("alsa");
-		new NetworkMgr("wlan0");
+		new NetworkMgr("");
 		new ConnectionLoop(6741); 
 		new WSConnectionMgr(Map.of("/client_stream", new AudioRecvWS(), "/time_stream", new TimeSyncWS()));
 		new BellTrigger();	
