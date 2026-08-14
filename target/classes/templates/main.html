@@ -173,6 +173,9 @@
     let micStream = null;
     let isRecording = false;
     let spacePressed = false;
+    
+    // Track alarm toggle state
+    let isAlarmActive = false;
 
     // Click trigger setup 
     document.getElementById('enableAudioBtn').onclick = async () => {
@@ -194,48 +197,102 @@
 
     function initWebSockets() {
         const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
-        
-        // /audio_io endpoint configuration
-        audioIoWs = new WebSocket(protocol + window.location.host + '/audio_io');
-        audioIoWs.binaryType = 'arraybuffer';
-        
-        audioIoWs.onopen = () => {
-            audioIoWs.send("GET_AUDIO_STREAM");
-        };
+        const host = window.location.host;
 
-        audioIoWs.onmessage = (event) => {
-            if (typeof event.data === 'string') {
-                try {
-                    const activeSpeakers = JSON.parse(event.data);
-                    renderSpeakers(activeSpeakers);
-                } catch(e) {}
-            } else {
-                playRawBytes(event.data);
-            }
-        };
+        function connectAudioIo() {
+            audioIoWs = new WebSocket(protocol + host + '/audio_io');
+            audioIoWs.binaryType = 'arraybuffer';
+            
+            audioIoWs.onopen = () => {
+                audioIoWs.send("GET_AUDIO_STREAM");
+            };
 
-        // /speak output configuration
-        speakWs = new WebSocket(protocol + window.location.host + '/speak');
-    }
+            audioIoWs.onmessage = (event) => {
+                if (typeof event.data === 'string') {
+                    try {
+                        const activeSpeakers = JSON.parse(event.data);
+                        renderSpeakers(activeSpeakers);
+                    } catch(e) {}
+                } else {
+                    playRawBytes(event.data);
+                }
+            };
 
-    function playRawBytes(arrayBuffer) {
-        if (!audioContextInitialized || !audioCtx) return;
-        const int16Array = new Int16Array(arrayBuffer);
-        if (int16Array.length === 0) return;
-        
-        const float32Array = new Float32Array(int16Array.length);
-        for (let i = 0; i < int16Array.length; i++) {
-            float32Array[i] = int16Array[i] / 32768.0;
+            audioIoWs.onclose = () => {
+                // Handle UI Fallbacks on disconnection
+                handleWsDisconnectUi();
+                setTimeout(connectAudioIo, 2000); // Auto-reconnect after 2 seconds
+            };
+            
+            audioIoWs.onerror = () => {
+                audioIoWs.close();
+            };
         }
-        
-        const buffer = audioCtx.createBuffer(1, float32Array.length, 48000);
-        buffer.getChannelData(0).set(float32Array);
-        
-        const source = audioCtx.createBufferSource();
-        source.buffer = buffer;
-        source.connect(audioCtx.destination);
-        source.start();
+
+        function connectSpeak() {
+            speakWs = new WebSocket(protocol + host + '/speak');
+            
+            speakWs.onclose = () => {
+                // Handle UI Fallbacks on disconnection
+                handleWsDisconnectUi();
+                setTimeout(connectSpeak, 2000); // Auto-reconnect after 2 seconds
+            };
+
+            speakWs.onerror = () => {
+                speakWs.close();
+            };
+        }
+
+        connectAudioIo();
+        connectSpeak();
     }
+
+    // Clears active speaker panels and resets selected texts to "--"
+    function handleWsDisconnectUi() {
+        // Reset dynamic speakers container UI
+        const container = document.getElementById('speakerContainer');
+        if (container) container.innerHTML = '';
+
+        // Fallback dropdown text representations to "--"
+        const selects = document.querySelectorAll('#userContainer select');
+        selects.forEach(select => {
+            if (select.options.length > 0 && !select.querySelector('option[value="--"]')) {
+                const fallbackOpt = document.createElement('option');
+                fallbackOpt.value = "--";
+                fallbackOpt.innerText = "--";
+                select.insertBefore(fallbackOpt, select.firstChild);
+                select.value = "--";
+            }
+        });
+    }
+
+	let pcmWorkletNode = null;
+
+	async function initAudioEngine() {
+		audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000 });
+		
+		// 1. Load the external worklet processor script
+		await audioCtx.audioWorklet.addModule('/static/pcm-processor.js');
+		
+		// 2. Instantiate the node
+		pcmWorkletNode = new AudioWorkletNode(audioCtx, 'pcm-processor');
+		pcmWorkletNode.connect(audioCtx.destination);
+		
+		audioContextInitialized = true;
+	}
+
+// 3. Feed your incoming 960-byte WebSocket binary chunks into the worklet
+function playRawBytes(arrayBuffer) {
+    if (!audioContextInitialized || !audioCtx || !pcmWorkletNode) return;
+    
+     // Verify chunk size matches your 960-byte expectation (480 samples * 2 bytes)
+    if (arrayBuffer.byteLength !== 960) {
+        // Optional safety fallback if a variable chunk arrives
+    }
+
+    // Transfer the ArrayBuffer safely to the audio worklet thread
+    pcmWorkletNode.port.postMessage(arrayBuffer, [arrayBuffer]);
+}
 
     function renderSpeakers(speakersList) {
         const container = document.getElementById('speakerContainer');
@@ -342,7 +399,7 @@
         selects.forEach(sel => {
             if (sel.value === 'BROADCAST') {
                 ips = globalUsersList.map(u => u.ip);
-            } else if (sel.value) {
+            } else if (sel.value && sel.value !== "--") {
                 ips.push(sel.value);
             }
         });
@@ -358,57 +415,88 @@
     // PTT logic stream integration
     const pttBtn = document.getElementById('pttBtn');
 
-    async function startRecording() {
-        if (isRecording) return;
-        syncIPSelectionToWS(); 
-        
-        try {
-            isRecording = true;
-            pttBtn.classList.add('recording');
-            micStream = await navigator.mediaDevices.getUserMedia({ audio: { sampleRate: 48000, channelCount: 1 } });
-            
-            const source = audioCtx.createMediaStreamSource(micStream);
-            const processor = audioCtx.createScriptProcessor(4096, 1, 1);
-            
-            processor.onaudioprocess = (e) => {
-                if (!isRecording) return;
-                const inputData = e.inputBuffer.getChannelData(0);
-                const buffer = new ArrayBuffer(inputData.length * 2);
-                const view = new DataView(buffer);
-                let offset = 0;
-                for (let i = 0; i < inputData.length; i++, offset += 2) {
-                    let s = Math.max(-1, Math.min(1, inputData[i]));
-                    view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
-                }
-                if (speakWs && speakWs.readyState === WebSocket.OPEN) {
-                    speakWs.send(buffer);
-                }
-            };
+	 // Updated PTT logic that completely recreates stream nodes to prevent device corruption
+	async function startRecording() {
+		if (isRecording) return;
+		syncIPSelectionToWS(); 
+		
+		try {
+		    isRecording = true;
+		    pttBtn.classList.add('recording');
 
-            source.connect(processor);
-            processor.connect(audioCtx.destination);
-            pttBtn.processorRef = processor;
-            pttBtn.sourceRef = source;
-        } catch(e) {
-            isRecording = false;
-            pttBtn.classList.remove('recording');
-        }
-    }
+		    // 1. Always request a fresh media stream from the currently active default system mic
+		    micStream = await navigator.mediaDevices.getUserMedia({ 
+		        audio: { 
+		            sampleRate: 48000, 
+		            channelCount: 1,
+		            echoCancellation: true,
+		            noiseSuppression: true
+		        } 
+		    });
+		    
+		    // 2. If an old AudioContext exists, close it out to drop old hardware bindings
+		    if (audioCtx) {
+		        try { await audioCtx.close(); } catch(e) {}
+		    }
+		    
+		    // 3. Rebuild the Audio Engine entirely for the newly selected device
+		    audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000 });
+		    audioContextInitialized = true;
+		    
+		    // 4. Bind the new stream to the fresh context nodes
+		    const source = audioCtx.createMediaStreamSource(micStream);
+		    const processor = audioCtx.createScriptProcessor(4096, 1, 1);
+		    
+		    processor.onaudioprocess = (e) => {
+		        if (!isRecording) return;
+		        const inputData = e.inputBuffer.getChannelData(0);
+		        const buffer = new ArrayBuffer(inputData.length * 2);
+		        const view = new DataView(buffer);
+		        let offset = 0;
+		        for (let i = 0; i < inputData.length; i++, offset += 2) {
+		            let s = Math.max(-1, Math.min(1, inputData[i]));
+		            view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+		        }
+		        if (speakWs && speakWs.readyState === WebSocket.OPEN) {
+		            speakWs.send(buffer);
+		        }
+		    };
 
-    function stopRecording() {
-        if (!isRecording) return;
-        isRecording = false;
-        pttBtn.classList.remove('recording');
-        
-        if (pttBtn.processorRef) {
-            pttBtn.processorRef.disconnect();
-            pttBtn.sourceRef.disconnect();
-        }
-        if (micStream) {
-            micStream.getTracks().forEach(t => t.stop());
-        }
-    }
+		    source.connect(processor);
+		    processor.connect(audioCtx.destination);
+		    pttBtn.processorRef = processor;
+		    pttBtn.sourceRef = source;
+		    
+		    // 5. Handle cases where the user revokes permission mid-stream 
+		    micStream.getTracks()[0].onended = () => {
+		        stopRecording();
+		    };
 
+		} catch(e) {
+		    console.error("Failed to safely initialize new mic device pipeline:", e);
+		    isRecording = false;
+		    pttBtn.classList.remove('recording');
+		}
+	}
+
+	function stopRecording() {
+		if (!isRecording) return;
+		isRecording = false;
+		pttBtn.classList.remove('recording');
+		
+		// Disconnect script processors safely
+		if (pttBtn.processorRef) {
+		    try { pttBtn.processorRef.disconnect(); } catch(e){}
+		}
+		if (pttBtn.sourceRef) {
+		    try { pttBtn.sourceRef.disconnect(); } catch(e){}
+		}
+		
+		// Stop tracks to let go of hardware control
+		if (micStream) {
+		    micStream.getTracks().forEach(t => t.stop());
+		}
+	}
     pttBtn.onmousedown = startRecording;
     pttBtn.onmouseup = stopRecording;
     pttBtn.onmouseleave = stopRecording;
@@ -427,17 +515,32 @@
         }
     };
 
-    // Alarm integration via matching /set_alert POST framework
-    document.getElementById('alarmBtn').onclick = async () => {
+    // Alarm integration with target toggles to remote IPs
+    document.getElementById('alarmBtn').onclick = async function() {
         const targets = getSelectedIPs();
-        for (const ip of targets) {
-            try {
-                await fetch('/set_alert', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ ip: ip, alert: 'alarm' })
-                });
-            } catch(e) {}
+        const alarmBtn = this;
+        
+        // Determine action based on current state toggles
+        const path = isAlarmActive ? '/stop_alert' : '/set_alert';
+        
+        // Dispatch external POST operations
+        const requests = targets.map(ip => {
+            return fetch(`http://${ip}:6742${path}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ "alert": "alarm" })
+            }).catch(e => console.error(`Failed to target client context: ${ip}`, e));
+        });
+
+        await Promise.all(requests);
+
+        // Update UI states safely
+        if (!isAlarmActive) {
+            alarmBtn.classList.add('active');
+            isAlarmActive = true;
+        } else {
+            alarmBtn.classList.remove('active');
+            isAlarmActive = false;
         }
     };
 

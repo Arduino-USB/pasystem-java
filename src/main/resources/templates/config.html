@@ -81,10 +81,11 @@
 <script src="/static/notifications.js"></script>
 <script>
     let internalClientsList = [];
+    const openPanelsState = new Map(); // Tracks open states and intervals for panels securely
 
     window.onload = function() {
         syncClients();
-        setInterval(syncClients, 5000); // Steady background sync cycle execution
+        setInterval(syncClients, 5000); // Steady background list verification sync cycle
     };
 
     async function syncClients() {
@@ -97,97 +98,141 @@
 
     function renderClientsView() {
         const listDiv = document.getElementById('clientList');
-        // Preserve expansion view states by tracking open items if active
-        const openPanels = {};
-        internalClientsList.forEach((c, idx) => {
-            const existingPanel = document.getElementById(`panel-config-${idx}`);
-            if (existingPanel && existingPanel.style.display === 'block') {
-                openPanels[c.ip] = true;
+        const currentIps = internalClientsList.map(c => c.ip);
+
+        // 1. Housekeeping: Remove components for clients that no longer exist
+        const activeTiles = listDiv.querySelectorAll('.client');
+        activeTiles.forEach(tile => {
+            if (!currentIps.includes(tile.dataset.clientIp)) {
+                const tileIp = tile.dataset.clientIp;
+                if (openPanelsState.has(tileIp)) {
+                    clearInterval(openPanelsState.get(tileIp).intervalId);
+                    openPanelsState.delete(tileIp);
+                }
+                tile.remove();
             }
         });
 
-        listDiv.innerHTML = '';
-
+        // 2. Add or Update target rows safely without resetting inner elements
         internalClientsList.forEach((client, idx) => {
-            const clientTile = document.createElement('div');
-            clientTile.className = 'client';
+            let tile = listDiv.querySelector(`[data-client-ip="${client.ip}"]`);
             
-            clientTile.innerHTML = `
-                <div class="row">
-                    <div>
-                        <b style="font-size: 16px;">${client.name}</b>
-                        <div class="small">IP Address: ${client.ip}</div>
+            if (!tile) {
+                tile = document.createElement('div');
+                tile.className = 'client';
+                tile.dataset.clientIp = client.ip;
+                
+                tile.innerHTML = `
+                    <div class="row">
+                        <div>
+                            <b class="client-name-label" style="font-size: 16px;">${client.name}</b>
+                            <div class="small">IP Address: ${client.ip}</div>
+                        </div>
+                        <button class="config-edit-btn"></button>
                     </div>
-                    <button class="config-edit-btn" onclick="expandClientSettings(${idx}, '${client.ip}')"></button>
-                </div>
-                <div class="edit-panel" id="panel-config-${idx}" style="display: ${openPanels[client.ip] ? 'block' : 'none'};">
-                    <div id="settings-loader-${idx}">Loading settings profile from device...</div>
-                </div>
-            `;
-            listDiv.appendChild(clientTile);
+                    <div class="edit-panel" style="display: none;">
+                        <div class="settings-loader-panel">Loading settings profile from device...</div>
+                    </div>
+                `;
+                listDiv.appendChild(tile);
+            } else {
+                tile.querySelector('.client-name-label').innerText = client.name;
+            }
+
+            const editBtn = tile.querySelector('.config-edit-btn');
+            editBtn.onclick = () => toggleClientSettingsView(tile, client.ip);
         });
     }
 
-    async function expandClientSettings(idx, ip) {
-        const panel = document.getElementById(`panel-config-${idx}`);
+    async function toggleClientSettingsView(tileElement, ip) {
+        const panel = tileElement.querySelector('.edit-panel');
+        const loaderContainer = tileElement.querySelector('.settings-loader-panel');
+
         if (panel.style.display === 'block') {
             panel.style.display = 'none';
+            if (openPanelsState.has(ip)) {
+                clearInterval(openPanelsState.get(ip).intervalId);
+                openPanelsState.delete(ip);
+            }
             return;
         }
         
         panel.style.display = 'block';
-        const loaderContainer = document.getElementById(`settings-loader-${idx}`);
-        
-        try {
-            // Documented direct communication call cross-origin pattern rule
-            const targetUrl = `http://${ip}:6742/get_settings`;
-            const res = await fetch(targetUrl);
-            const settingsData = await res.json();
-            
-            buildDynamicSettingsForm(idx, ip, settingsData);
-        } catch(e) {
-            loaderContainer.innerHTML = `<span style="color:red;">Error connecting directly to hardware unit at ${ip}:6742</span>`;
+
+        async function fetchSettingsUpdate() {
+            try {
+                const targetUrl = `http://${ip}:6742/get_settings`;
+                const res = await fetch(targetUrl);
+                const settingsData = await res.json();
+                
+                updateOrBuildSettingsForm(panel, loaderContainer, ip, settingsData);
+            } catch(e) {
+                if (!panel.querySelector('.settings-form-container')) {
+                    loaderContainer.innerHTML = `<span style="color:red;">Error connecting directly to hardware unit at ${ip}:6742</span>`;
+                }
+            }
         }
+
+        await fetchSettingsUpdate();
+        const intervalId = setInterval(fetchSettingsUpdate, 1000);
+        openPanelsState.set(ip, { intervalId });
     }
 
-    function buildDynamicSettingsForm(idx, ip, settings) {
-        const panel = document.getElementById(`panel-config-${idx}`);
-        panel.innerHTML = ''; // Expunge previous load states
+    function updateOrBuildSettingsForm(panel, loaderElement, ip, settings) {
+        let formContainer = panel.querySelector('.settings-form-container');
 
-        const formContainer = document.createElement('div');
-        
-        // Loop over indeterminate map keys dictionary cleanly
+        if (!formContainer) {
+            loaderElement.style.display = 'none';
+            formContainer = document.createElement('div');
+            formContainer.className = 'settings-form-container';
+            panel.appendChild(formContainer);
+        }
+
         for (const [key, value] of Object.entries(settings)) {
-            const fieldWrapper = document.createElement('div');
-            fieldWrapper.style.marginBottom = '8px';
-            
-            const label = document.createElement('label');
-            label.innerText = `${key}:`;
-            
-            const input = document.createElement('input');
-            input.type = 'text';
-            input.className = `settings-input-${idx}`;
-            input.dataset.settingKey = key;
-            input.value = value;
-            
-            fieldWrapper.appendChild(label);
-            fieldWrapper.appendChild(input);
-            formContainer.appendChild(fieldWrapper);
+            let inputField = formContainer.querySelector(`[data-setting-key="${key}"]`);
+
+            if (!inputField) {
+                const fieldWrapper = document.createElement('div');
+                fieldWrapper.style.marginBottom = '8px';
+                
+                // Formatter: Replace underscores with spaces, then capitalize the first character
+                let displayLabel = key.replace(/_/g, ' ');
+                displayLabel = displayLabel.charAt(0).toUpperCase() + displayLabel.slice(1);
+
+                const label = document.createElement('label');
+                label.innerText = `${displayLabel}:`;
+                
+                inputField = document.createElement('input');
+                inputField.type = 'text';
+                // Crucial: The underlying setting key preserves its original formatting (e.g. device_name)
+                inputField.dataset.settingKey = key;
+                
+                fieldWrapper.appendChild(label);
+                fieldWrapper.appendChild(inputField);
+                formContainer.appendChild(fieldWrapper);
+            }
+
+            if (document.activeElement !== inputField) {
+                inputField.value = value;
+            }
         }
 
-        const saveButton = document.createElement('button');
-        saveButton.innerText = "Save Device Settings";
-        saveButton.onclick = () => saveDeviceSettingsPayload(idx, ip);
-        
-        formContainer.appendChild(saveButton);
-        panel.appendChild(formContainer);
+        let saveButton = formContainer.querySelector('.save-device-btn');
+        if (!saveButton) {
+            saveButton = document.createElement('button');
+            saveButton.className = 'save-device-btn';
+            saveButton.innerText = "Save Device Settings";
+            formContainer.appendChild(saveButton);
+        }
+        saveButton.onclick = () => saveDeviceSettingsPayload(formContainer, ip);
     }
 
-    async function saveDeviceSettingsPayload(idx, ip) {
-        const inputFields = document.querySelectorAll(`.settings-input-${idx}`);
+    async function saveDeviceSettingsPayload(formContainer, ip) {
+        const inputFields = formContainer.querySelectorAll('input');
         const updatePayload = {};
 
         inputFields.forEach(field => {
+            // Reads from data-setting-key, returning original raw key structures seamlessly
             const key = field.dataset.settingKey;
             const val = field.value;
             updatePayload[key] = val;
@@ -195,7 +240,7 @@
 
         try {
             const targetUrl = `http://${ip}:6742/update_settings`;
-            const response = await fetch(targetUrl, {
+            await fetch(targetUrl, {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify(updatePayload)

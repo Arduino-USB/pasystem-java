@@ -120,45 +120,70 @@
 <script>
     (function() {
         const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
-        const timeWs = new WebSocket(protocol + window.location.host + '/time_stream');
-        
-        timeWs.onmessage = function(event) {
-            const timeStr = event.data; 
-            if (timeStr && timeStr.includes('T')) {
-                const parts = timeStr.split('T');
-                const datePart = parts[0];
-                const clockPart = parts[1].substring(0, 8); // Extracts "HH:MM:SS"
-                
-                // Convert "HH:MM:SS" straight to "HH:MM:SS AM/PM"
-                const timeSegments = clockPart.split(':');
-                let hours = parseInt(timeSegments[0], 10);
-                const minutes = timeSegments[1];
-                const seconds = timeSegments[2];
-                
-                const ampm = hours >= 12 ? 'PM' : 'AM';
-                hours = hours % 12;
-                hours = hours ? hours : 12; // The hour '0' should be '12'
-                
-                // Reassemble into clean AM/PM format string
-                const formattedClock = `${hours}:${minutes}:${seconds} ${ampm}`;
-                
+        const host = window.location.host;
+        let timeWs = null;
+
+        function connectTimeStream() {
+            timeWs = new WebSocket(protocol + host + '/time_stream');
+            
+            timeWs.onmessage = function(event) {
+                const timeStr = event.data; 
+                if (timeStr && timeStr.includes('T')) {
+                    const parts = timeStr.split('T');
+                    const datePart = parts[0];
+                    const clockPart = parts[1].substring(0, 8); // Extracts "HH:MM:SS"
+                    
+                    // Convert "HH:MM:SS" straight to "HH:MM:SS AM/PM"
+                    const timeSegments = clockPart.split(':');
+                    let hours = parseInt(timeSegments[0], 10);
+                    const minutes = timeSegments[1];
+                    const seconds = timeSegments[2];
+                    
+                    const ampm = hours >= 12 ? 'PM' : 'AM';
+                    hours = hours % 12;
+                    hours = hours ? hours : 12; // The hour '0' should be '12'
+                    
+                    // Reassemble into clean AM/PM format string
+                    const formattedClock = `${hours}:${minutes}:${seconds} ${ampm}`;
+                    
+                    const dateEl = document.getElementById('date');
+                    const clockEl = document.getElementById('clock');
+                    
+                    if (dateEl) dateEl.innerText = datePart;
+                    if (clockEl) clockEl.innerText = formattedClock;
+                }
+            };
+
+            timeWs.onclose = function() {
+                // Instantly zero out UI labels on connection failure
                 const dateEl = document.getElementById('date');
                 const clockEl = document.getElementById('clock');
-                
-                if (dateEl) dateEl.innerText = datePart;
-                if (clockEl) clockEl.innerText = formattedClock;
-            }
-        };
+                if (dateEl) dateEl.innerText = '--';
+                if (clockEl) clockEl.innerText = '--';
 
+                // Accelerated reconnect threshold: Try again in 1 second (1000ms)
+                setTimeout(connectTimeStream, 1000);
+            };
+
+            timeWs.onerror = function() {
+                timeWs.close();
+            };
+        }
+        
         async function updateTopbarTimezone() {
             try {
                 const res = await fetch('/get_timezone');
                 const tz = await res.text();
                 const tzEl = document.getElementById('timezoneDisplay');
                 if (tzEl) tzEl.innerText = tz.replace(/"/g, ''); 
-            } catch(e) {}
+            } catch(e) {
+                const tzEl = document.getElementById('timezoneDisplay');
+                if (tzEl) tzEl.innerText = '--';
+            }
         }
         
+        // Fire initialization routines
+        connectTimeStream();
         updateTopbarTimezone();
         setInterval(updateTopbarTimezone, 10000);
     })();

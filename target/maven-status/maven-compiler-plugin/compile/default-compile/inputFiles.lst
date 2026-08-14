@@ -1,18 +1,19 @@
-C:\Users\Main User\Desktop\JavaTest\com.pasystem\src\main\java\com\pasystem\AlertMgr.java
-C:\Users\Main User\Desktop\JavaTest\com.pasystem\src\main\java\com\pasystem\App.java
-C:\Users\Main User\Desktop\JavaTest\com.pasystem\src\main\java\com\pasystem\AudioIOWS.java
-C:\Users\Main User\Desktop\JavaTest\com.pasystem\src\main\java\com\pasystem\BellDataMgr.java
-C:\Users\Main User\Desktop\JavaTest\com.pasystem\src\main\java\com\pasystem\ClientMgr.java
-C:\Users\Main User\Desktop\JavaTest\com.pasystem\src\main\java\com\pasystem\CmdExec.java
-C:\Users\Main User\Desktop\JavaTest\com.pasystem\src\main\java\com\pasystem\FakeClock.java
-C:\Users\Main User\Desktop\JavaTest\com.pasystem\src\main\java\com\pasystem\GlobalSoundQueue.java
-C:\Users\Main User\Desktop\JavaTest\com.pasystem\src\main\java\com\pasystem\HTTPWrapper.java
-C:\Users\Main User\Desktop\JavaTest\com.pasystem\src\main\java\com\pasystem\MicMgr.java
-C:\Users\Main User\Desktop\JavaTest\com.pasystem\src\main\java\com\pasystem\ServerWebHooks.java
-C:\Users\Main User\Desktop\JavaTest\com.pasystem\src\main\java\com\pasystem\SoundStreamWS.java
-C:\Users\Main User\Desktop\JavaTest\com.pasystem\src\main\java\com\pasystem\SpeakerMgr.java
-C:\Users\Main User\Desktop\JavaTest\com.pasystem\src\main\java\com\pasystem\SpeakWS.java
-C:\Users\Main User\Desktop\JavaTest\com.pasystem\src\main\java\com\pasystem\StaticConfig.java
-C:\Users\Main User\Desktop\JavaTest\com.pasystem\src\main\java\com\pasystem\TemplateRenderer.java
-C:\Users\Main User\Desktop\JavaTest\com.pasystem\src\main\java\com\pasystem\TimeStreamWS.java
-C:\Users\Main User\Desktop\JavaTest\com.pasystem\src\main\java\com\pasystem\WSEndpoints.java
+/home/x86debug/pasystem-java/server/src/main/java/com/pasystem/AlertMgr.java
+/home/x86debug/pasystem-java/server/src/main/java/com/pasystem/App.java
+/home/x86debug/pasystem-java/server/src/main/java/com/pasystem/AudioIOWS.java
+/home/x86debug/pasystem-java/server/src/main/java/com/pasystem/BellDataMgr.java
+/home/x86debug/pasystem-java/server/src/main/java/com/pasystem/ClientMgr.java
+/home/x86debug/pasystem-java/server/src/main/java/com/pasystem/CmdExec.java
+/home/x86debug/pasystem-java/server/src/main/java/com/pasystem/FakeClock.java
+/home/x86debug/pasystem-java/server/src/main/java/com/pasystem/GlobalSoundQueue.java
+/home/x86debug/pasystem-java/server/src/main/java/com/pasystem/HTTPWrapper.java
+/home/x86debug/pasystem-java/server/src/main/java/com/pasystem/MicMgr.java
+/home/x86debug/pasystem-java/server/src/main/java/com/pasystem/ServerWebHooks.java
+/home/x86debug/pasystem-java/server/src/main/java/com/pasystem/SoundStreamWS.java
+/home/x86debug/pasystem-java/server/src/main/java/com/pasystem/SoundWatchdog.java
+/home/x86debug/pasystem-java/server/src/main/java/com/pasystem/SpeakWS.java
+/home/x86debug/pasystem-java/server/src/main/java/com/pasystem/SpeakerMgr.java
+/home/x86debug/pasystem-java/server/src/main/java/com/pasystem/StaticConfig.java
+/home/x86debug/pasystem-java/server/src/main/java/com/pasystem/TemplateRenderer.java
+/home/x86debug/pasystem-java/server/src/main/java/com/pasystem/TimeStreamWS.java
+/home/x86debug/pasystem-java/server/src/main/java/com/pasystem/WSEndpoints.java

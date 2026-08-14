@@ -50,6 +50,11 @@ public class AudioIOWS extends AbstractWebSocketHandler {
                                 System.out.println("[AudioIOWS] [DEBUG] REAL: '" + real_timestamp + "', LAST : '" + speaking_users.get(speaking_users_keys[i]) + "'");
                                 speaking_users.remove(speaking_users_keys[i]);
                             }
+
+							if (speaking_users.isEmpty()) {
+								System.out.println("[AudioIOWS] No users are speaking. Clearing audio queue.");
+								queue.clear();
+							}
                         }
                     }
 
@@ -156,21 +161,21 @@ public class AudioIOWS extends AbstractWebSocketHandler {
 
 	@Override
 	public void handleBinaryMessage(WebSocketSession session, BinaryMessage message){
-        String ip = session.getRemoteAddress().getAddress().getHostAddress();
-        long timestamp = clock.get_real_timestamp();
+		String ip = session.getRemoteAddress().getAddress().getHostAddress();
+		long timestamp = clock.get_real_timestamp();
 
-        synchronized (lock) {
-
-            if (session_get_stream_lock != null) {
-                
-                queue.add(to_bytes(message.getPayload()));
-
-                System.out.println("[AudioIOWS] User '" + ip + "' spoke @ " + timestamp);
-                speaking_users.put(ip, timestamp);
-            
-            }
-        }
-
+		synchronized (lock) {
+		    speaking_users.put(ip, timestamp);
+		    
+		    // Immediate dispatch to prevent artificial server-side queue latency drift
+		    if (session_get_stream_lock != null && session_get_stream_lock.isOpen()) {
+		        try {
+		            session_get_stream_lock.sendMessage(message);
+		        } catch (Exception e) {
+		            System.out.println("[AudioIOWS] Failed to forward audio stream: " + e);
+		        }
+		    }
+		}
 	}
 
     @Override
