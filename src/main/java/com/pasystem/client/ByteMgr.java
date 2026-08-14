@@ -12,10 +12,14 @@ public class ByteMgr {
      * @return The complete, assembled byte array if 'last' is true; null otherwise.
      */
 	public static byte[] to_bytes(ByteBuffer buffer) {
-        byte[] data = new byte[buffer.remaining()];
-        buffer.slice().get(data);
-        return data;
-    }
+		byte[] data = new byte[buffer.remaining()];
+		buffer.get(data);
+		return data;
+	}
+	
+	public static ByteBuffer to_byte_buffer(byte[] data) {
+    	return ByteBuffer.wrap(data);
+	}
 
     public synchronized byte[] byte_combine(byte[] chunk, boolean last) {
         if (chunk == null || chunk.length == 0) {
