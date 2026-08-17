@@ -9,707 +9,562 @@ import java.util.concurrent.LinkedBlockingQueue;
 
 public class MicMgr {
 
-	private static boolean instance_created = false;
-
-	private static AudioFormat format;
-	private static String target_mic;
+    private static boolean instance_created = false;
+
+    private static AudioFormat format;
+
+    private static Mixer current_mixer;
+    private static TargetDataLine mic;
+
+    private static volatile boolean running = false;
+
+    private static final Object lock = new Object();
+
+    private static Thread lifecycle_thread;
+
+    /*
+     * 960 bytes =
+     *
+     * 48000 Hz
+     * 16-bit
+     * mono
+     *
+     * 480 samples × 2 bytes = 960 bytes
+     *
+     * Therefore each packet represents exactly 10 ms
+     * of audio.
+     */
+    private static final int CHUNK_SIZE = 960;
+
+
+    /*
+     * Keep a small amount of buffering.
+     *
+     * 100 packets × 10 ms = approximately 1 second
+     * of audio.
+     *
+     * If the consumer falls behind, we drop the oldest
+     * packet rather than allowing latency to grow forever.
+     */
+    private static final BlockingQueue<byte[]> audio_queue =
+        new LinkedBlockingQueue<>(100);
+
+
+    /*
+     * Used to wake pull() when MicMgr is closed.
+     *
+     * A null value is never placed into the BlockingQueue,
+     * so pull() needs another way to know that shutdown
+     * occurred.
+     */
+    private static volatile boolean closed = false;
+
+
+    // ============================================================
+    // Initialization (Static Start)
+    // ============================================================
+
+    static {
+        // Network/capture format.
+        format =
+            new AudioFormat(
+                AudioFormat.Encoding.PCM_SIGNED,
+                48000,
+                16,
+                1,
+                2,
+                48000,
+                false
+            );
+    }
+
+    public MicMgr() {
+        synchronized (lock) {
+
+            if (instance_created) {
+
+                System.out.println(
+                    "[MicMgr] There can only be one given instance " +
+                    "of MicMgr, and then it is meant to be used " +
+                    "as a static utility."
+                );
+
+                return;
+            }
+
+            instance_created = true;
+            running = true;
+            closed = false;
+
+            lifecycle_thread =
+                new Thread(
+                    MicMgr::manage_audio_lifecycle,
+                    "MicMgr-Lifecycle"
+                );
+
+            lifecycle_thread.setDaemon(true);
+            lifecycle_thread.start();
+        }
+    }
+
+
+    // ============================================================
+    // Get Available Microphones
+    // ============================================================
 
-	private static Mixer current_mixer;
-	private static TargetDataLine mic;
+    public static List<String> get_mics() {
+        List<String> micList = new ArrayList<>();
+        Mixer.Info[] mixers = AudioSystem.getMixerInfo();
 
-	private static volatile boolean running = false;
-
-	private static final Object lock = new Object();
+        for (Mixer.Info info : mixers) {
+            try {
+                Mixer mixer = AudioSystem.getMixer(info);
+                Line.Info[] targetLines = mixer.getTargetLineInfo();
 
-	private static Thread lifecycle_thread;
+                if (targetLines.length > 0) {
+                    String name = info.getName();
+                    String description = info.getDescription();
+                    String combined = (name + " " + description).trim();
 
-	/*
-	 * 960 bytes =
-	 *
-	 * 48000 Hz
-	 * 16-bit
-	 * mono
-	 *
-	 * 480 samples × 2 bytes = 960 bytes
-	 *
-	 * Therefore each packet represents exactly 10 ms
-	 * of audio.
-	 */
-	private static final int CHUNK_SIZE = 960;
+                    if (!micList.contains(combined) && !micList.contains(name)) {
+                        micList.add(combined);
+                    }
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        return micList;
+    }
 
 
-	/*
-	 * Keep a small amount of buffering.
-	 *
-	 * 100 packets × 10 ms = approximately 1 second
-	 * of audio.
-	 *
-	 * If the consumer falls behind, we drop the oldest
-	 * packet rather than allowing latency to grow forever.
-	 */
-	private static final BlockingQueue<byte[]> audio_queue =
-		new LinkedBlockingQueue<>(100);
+    // ============================================================
+    // Find PulseAudio Mixer
+    // ============================================================
 
+    private static Mixer.Info find_mic_mixer() {
 
-	/*
-	 * Used to wake pull() when MicMgr is closed.
-	 *
-	 * A null value is never placed into the BlockingQueue,
-	 * so pull() needs another way to know that shutdown
-	 * occurred.
-	 */
-	private static volatile boolean closed = false;
+        System.out.println("[MicMgr] Searching for PulseAudio mixer...");
 
+        for (Mixer.Info info : AudioSystem.getMixerInfo()) {
 
-	// ============================================================
-	// Constructor
-	// ============================================================
+            String name = info.getName().toLowerCase();
+            String description = info.getDescription().toLowerCase();
 
-	public MicMgr(String target_mic) {
+            System.out.println(
+                "[MicMgr] Mixer: " +
+                info.getName() +
+                " | " +
+                info.getDescription()
+            );
 
-		synchronized (lock) {
+            if (
+                name.contains("pulseaudio") ||
+                name.contains("pulse audio") ||
+                description.contains("pulseaudio") ||
+                description.contains("pulse audio")
+            ) {
+                try {
+                    Mixer mixer = AudioSystem.getMixer(info);
+                    if (mixer.getTargetLineInfo().length > 0) {
+                        return info;
+                    }
+                } catch (Exception ignored) {
+                }
+            }
+        }
 
-			if (instance_created) {
+        return null;
+    }
 
-				System.out.println(
-					"[MicMgr] There can only be one given instance " +
-					"of MicMgr, and then it is meant to be used " +
-					"as a static utility."
-				);
 
-				return;
-			}
+    // ============================================================
+    // Reconnect
+    // ============================================================
 
+    public static void reconnect() {
 
-			MicMgr.target_mic = target_mic;
+        if (!instance_created) {
+            return;
+        }
 
+        System.out.println(
+            "[MicMgr] Manually triggering a reconnect..."
+        );
 
-			/*
-			 * Network/capture format.
-			 *
-			 * PCM_SIGNED
-			 * 48000 Hz
-			 * 16-bit
-			 * mono
-			 * 2 bytes/frame
-			 * little-endian
-			 */
-			format =
-				new AudioFormat(
-					AudioFormat.Encoding.PCM_SIGNED,
-					48000,
-					16,
-					1,
-					2,
-					48000,
-					false
-				);
+        cleanup_mic();
+    }
 
 
-			instance_created = true;
+    // ============================================================
+    // Audio Lifecycle
+    // ============================================================
 
-			running = true;
+    private static void manage_audio_lifecycle() {
 
-			closed = false;
+        while (running) {
 
+            try {
 
-			lifecycle_thread =
-				new Thread(
-					MicMgr::manage_audio_lifecycle,
-					"MicMgr-Lifecycle"
-				);
+                Mixer.Info pulseInfo =
+                    wait_for_mic_mixer();
 
-			lifecycle_thread.setDaemon(true);
 
-			lifecycle_thread.start();
-		}
-	}
+                if (pulseInfo == null) {
+                    continue;
+                }
 
 
-	// ============================================================
-	// Get Available Microphones
-	// ============================================================
+                Mixer mixer =
+                    AudioSystem.getMixer(pulseInfo);
 
-	public static List<String> get_mics() {
 
-		List<String> mic_names =
-			new ArrayList<>();
+                DataLine.Info lineInfo =
+                    new DataLine.Info(
+                        TargetDataLine.class,
+                        format
+                    );
 
 
-		Mixer.Info pulseInfo =
-			find_pulse_mixer();
+                if (!mixer.isLineSupported(lineInfo)) {
 
+                    System.out.println(
+                        "[MicMgr] PulseAudio mixer does not " +
+                        "support TargetDataLine format: " +
+                        format
+                    );
 
-		if (pulseInfo == null) {
+                    safe_sleep(2000);
 
-			System.out.println(
-				"[MicMgr] PulseAudio MixerProvider was not found."
-			);
+                    continue;
+                }
 
-			return mic_names;
-		}
 
+                TargetDataLine newMic;
 
-		try {
 
-			Mixer mixer =
-				AudioSystem.getMixer(pulseInfo);
+                synchronized (lock) {
 
+                    current_mixer = mixer;
 
-			AudioFormat testFormat =
-				format != null
-					? format
-					: new AudioFormat(
-						AudioFormat.Encoding.PCM_SIGNED,
-						48000,
-						16,
-						1,
-						2,
-						48000,
-						false
-					);
 
+                    newMic =
+                        (TargetDataLine)
+                        mixer.getLine(lineInfo);
 
-			DataLine.Info lineInfo =
-				new DataLine.Info(
-					TargetDataLine.class,
-					testFormat
-				);
 
+                    /*
+                     * Open the capture stream through the selected mixer provider.
+                     */
+                    newMic.open(
+                        format,
+                        4096
+                    );
 
-			if (mixer.isLineSupported(lineInfo)) {
 
-				/*
-				 * PulseAudio provides one logical capture mixer.
-				 *
-				 * The actual PipeWire/PulseAudio source is selected
-				 * by the PulseAudio environment rather than by opening
-				 * an ALSA hw device directly.
-				 */
-				mic_names.add(pulseInfo.getName());
-			}
+                    newMic.start();
 
-		}
 
-		catch (Exception e) {
+                    mic = newMic;
+                }
 
-			System.out.println(
-				"[MicMgr] Failed to inspect microphones: " +
-				e.getMessage()
-			);
-		}
 
+                System.out.println(
+                    "[MicMgr] Successfully connected to PulseAudio mixer: " +
+                    pulseInfo.getName()
+                );
 
-		return mic_names;
-	}
 
+                System.out.println(
+                    "[MicMgr] Format: " +
+                    format
+                );
 
-	// ============================================================
-	// Find PulseAudio Mixer
-	// ============================================================
 
-	private static Mixer.Info find_pulse_mixer() {
+                /*
+                 * Capture until the line fails or MicMgr is closed.
+                 */
+                stream_audio_data(newMic);
 
-		System.out.println(
-			"[MicMgr] Searching for PulseAudio mixer..."
-		);
+            }
 
+            catch (LineUnavailableException e) {
 
-		for (Mixer.Info info : AudioSystem.getMixerInfo()) {
+                System.out.println(
+                    "[MicMgr] Microphone line unavailable. " +
+                    "Retrying..."
+                );
 
-			String name =
-				info.getName().toLowerCase();
+            }
 
-			String description =
-				info.getDescription().toLowerCase();
+            catch (Exception e) {
 
+                if (running) {
 
-			System.out.println(
-				"[MicMgr] Mixer: " +
-				info.getName() +
-				" | " +
-				info.getDescription()
-			);
+                    System.out.println(
+                        "[MicMgr] Microphone error: " +
+                        e.getMessage()
+                    );
+                }
+            }
 
+            finally {
 
-			if (
-				name.contains("pulseaudio") ||
-				name.contains("pulse audio") ||
-				description.contains("pulseaudio") ||
-				description.contains("pulse audio")
-			) {
+                cleanup_mic();
+            }
 
-				return info;
-			}
-		}
 
+            if (running) {
+                safe_sleep(2000);
+            }
+        }
+    }
 
-		return null;
-	}
 
+    // ============================================================
+    // Wait for Microphone Mixer
+    // ============================================================
 
-	// ============================================================
-	// Reconnect
-	// ============================================================
+    private static Mixer.Info wait_for_mic_mixer() {
 
-	public static void reconnect() {
+        System.out.println("[MicMgr] Waiting for PulseAudio microphone...");
 
-		if (!instance_created) {
-			return;
-		}
 
+        while (running) {
 
-		System.out.println(
-			"[MicMgr] Manually triggering a reconnect..."
-		);
+            Mixer.Info info =
+                find_mic_mixer();
 
 
-		cleanup_mic();
-	}
+            if (info != null) {
 
+                System.out.println(
+                    "[MicMgr] Found PulseAudio mixer: " +
+                    info.getName()
+                );
 
-	// ============================================================
-	// Audio Lifecycle
-	// ============================================================
+                return info;
+            }
 
-	private static void manage_audio_lifecycle() {
 
-		while (running) {
+            safe_sleep(2000);
+        }
 
-			try {
 
-				Mixer.Info pulseInfo =
-					wait_for_pulse_mixer();
+        return null;
+    }
 
 
-				if (pulseInfo == null) {
-					continue;
-				}
+    // ============================================================
+    // Capture Audio
+    // ============================================================
 
+    private static void stream_audio_data(
+        TargetDataLine current_mic
+    ) {
 
-				Mixer mixer =
-					AudioSystem.getMixer(pulseInfo);
+        System.out.println(
+            "[MicMgr] Audio capture thread started"
+        );
 
 
-				DataLine.Info lineInfo =
-					new DataLine.Info(
-						TargetDataLine.class,
-						format
-					);
+        while (
+            running &&
+            current_mic != null &&
+            current_mic.isOpen()
+        ) {
 
+            try {
 
-				if (!mixer.isLineSupported(lineInfo)) {
+                byte[] chunk =
+                    new byte[CHUNK_SIZE];
 
-					System.out.println(
-						"[MicMgr] PulseAudio mixer does not " +
-						"support TargetDataLine format: " +
-						format
-					);
 
-					safe_sleep(2000);
+                int totalRead = 0;
 
-					continue;
-				}
 
+                while (
+                    totalRead < CHUNK_SIZE &&
+                    running &&
+                    current_mic.isOpen()
+                ) {
 
-				TargetDataLine newMic;
+                    int bytesRead =
+                        current_mic.read(
+                            chunk,
+                            totalRead,
+                            CHUNK_SIZE - totalRead
+                        );
 
 
-				synchronized (lock) {
+                    if (bytesRead <= 0) {
 
-					current_mixer = mixer;
+                        System.out.println(
+                            "[MicMgr] Microphone read returned " +
+                            bytesRead
+                        );
 
+                        break;
+                    }
 
-					newMic =
-						(TargetDataLine)
-						mixer.getLine(lineInfo);
 
+                    totalRead += bytesRead;
+                }
 
-					/*
-					 * Open the capture stream through:
-					 *
-					 * Java
-					 *   ↓
-					 * PulseAudio MixerProvider
-					 *   ↓
-					 * PulseAudio
-					 *   ↓
-					 * PipeWire
-					 *   ↓
-					 * Microphone
-					 */
-					newMic.open(
-						format,
-						4096
-					);
 
+                if (!running) {
+                    break;
+                }
 
-					newMic.start();
 
+                if (totalRead != CHUNK_SIZE) {
 
-					mic = newMic;
-				}
+                    System.out.println(
+                        "[MicMgr] Incomplete audio packet: " +
+                        totalRead +
+                        "/" +
+                        CHUNK_SIZE
+                    );
 
+                    continue;
+                }
 
-				System.out.println(
-					"[MicMgr] Successfully connected through " +
-					"PulseAudio/PipeWire"
-				);
 
+                if (!audio_queue.offer(chunk)) {
 
-				System.out.println(
-					"[MicMgr] Format: " +
-					format
-				);
+                    audio_queue.poll();
 
+                    audio_queue.offer(chunk);
+                }
+            }
 
-				System.out.println(
-					"[MicMgr] Input device: " +
-					target_mic
-				);
+            catch (Exception e) {
 
+                if (running) {
 
-				/*
-				 * Capture until the line fails or MicMgr is closed.
-				 */
-				stream_audio_data(newMic);
+                    System.out.println(
+                        "[MicMgr] Microphone stream error: " +
+                        e.getMessage()
+                    );
+                }
 
-			}
+                return;
+            }
+        }
+    }
 
-			catch (LineUnavailableException e) {
 
-				System.out.println(
-					"[MicMgr] Microphone line unavailable. " +
-					"Retrying..."
-				);
+    // ============================================================
+    // Get Audio Chunk
+    // ============================================================
 
-			}
+    public static byte[] pull() {
 
-			catch (Exception e) {
+        while (running && !closed) {
 
-				if (running) {
+            try {
 
-					System.out.println(
-						"[MicMgr] Microphone error: " +
-						e.getMessage()
-					);
-				}
-			}
+                byte[] chunk =
+                    audio_queue.take();
 
-			finally {
+                return chunk;
+            }
 
-				cleanup_mic();
-			}
+            catch (InterruptedException e) {
 
+                Thread.currentThread().interrupt();
 
-			if (running) {
-				safe_sleep(2000);
-			}
-		}
-	}
+                return null;
+            }
+        }
 
+        return null;
+    }
 
-	// ============================================================
-	// Wait for PulseAudio
-	// ============================================================
 
-	private static Mixer.Info wait_for_pulse_mixer() {
+    // ============================================================
+    // Cleanup Mic
+    // ============================================================
 
-		System.out.println(
-			"[MicMgr] Waiting for PulseAudio microphone: " +
-			target_mic
-		);
+    private static void cleanup_mic() {
 
+        synchronized (lock) {
 
-		while (running) {
+            if (mic == null) {
+                return;
+            }
 
-			Mixer.Info info =
-				find_pulse_mixer();
 
+            try {
+                mic.stop();
+            }
+            catch (Exception ignored) {
+            }
 
-			if (info != null) {
 
-				System.out.println(
-					"[MicMgr] Found PulseAudio microphone mixer: " +
-					info.getName()
-				);
+            try {
+                mic.close();
+            }
+            catch (Exception ignored) {
+            }
 
-				return info;
-			}
 
+            mic = null;
+            current_mixer = null;
+        }
+    }
 
-			safe_sleep(2000);
-		}
 
+    // ============================================================
+    // Close / Shutdown
+    // ============================================================
 
-		return null;
-	}
+    public static void close() {
 
+        synchronized (lock) {
 
-	// ============================================================
-	// Capture Audio
-	// ============================================================
+            running = false;
+            closed = true;
 
-	private static void stream_audio_data(
-		TargetDataLine current_mic
-	) {
+            if (lifecycle_thread != null) {
+                lifecycle_thread.interrupt();
+            }
 
-		System.out.println(
-			"[MicMgr] Audio capture thread started"
-		);
+            cleanup_mic();
 
+            audio_queue.clear();
 
-		while (
-			running &&
-			current_mic != null &&
-			current_mic.isOpen()
-		) {
+            System.out.println("[MicMgr] Microphone manager shut down");
+        }
+    }
 
-			try {
 
-				/*
-				 * IMPORTANT:
-				 *
-				 * Create a NEW buffer for every audio packet.
-				 *
-				 * This completely eliminates the old race where
-				 * pull() could return the same array that read()
-				 * was simultaneously modifying.
-				 */
-				byte[] chunk =
-					new byte[CHUNK_SIZE];
+    // ============================================================
+    // Status
+    // ============================================================
 
+    public static boolean is_up() {
 
-				/*
-				 * TargetDataLine.read() may theoretically return
-				 * fewer bytes than requested.
-				 *
-				 * Keep reading until the entire 960-byte packet
-				 * has been filled.
-				 */
-				int totalRead = 0;
+        synchronized (lock) {
 
+            return
+                mic != null &&
+                mic.isOpen() &&
+                running;
+        }
+    }
 
-				while (
-					totalRead < CHUNK_SIZE &&
-					running &&
-					current_mic.isOpen()
-				) {
 
-					int bytesRead =
-						current_mic.read(
-							chunk,
-							totalRead,
-							CHUNK_SIZE - totalRead
-						);
+    // ============================================================
+    // Utility
+    // ============================================================
 
+    private static void safe_sleep(long millis) {
 
-					if (bytesRead <= 0) {
-
-						System.out.println(
-							"[MicMgr] Microphone read returned " +
-							bytesRead
-						);
-
-						break;
-					}
-
-
-					totalRead += bytesRead;
-				}
-
-
-				if (!running) {
-					break;
-				}
-
-
-				/*
-				 * Never expose a partial packet.
-				 */
-				if (totalRead != CHUNK_SIZE) {
-
-					System.out.println(
-						"[MicMgr] Incomplete audio packet: " +
-						totalRead +
-						"/" +
-						CHUNK_SIZE
-					);
-
-					continue;
-				}
-
-
-				/*
-				 * At this point the buffer is COMPLETE.
-				 *
-				 * Nobody will ever modify it again.
-				 *
-				 * Put the complete packet into the queue.
-				 */
-				if (!audio_queue.offer(chunk)) {
-
-					/*
-					 * Queue full.
-					 *
-					 * Drop oldest packet to prevent latency buildup.
-					 */
-					audio_queue.poll();
-
-					audio_queue.offer(chunk);
-				}
-			}
-
-			catch (Exception e) {
-
-				if (running) {
-
-					System.out.println(
-						"[MicMgr] Microphone stream error: " +
-						e.getMessage()
-					);
-				}
-
-				return;
-			}
-		}
-	}
-
-
-	// ============================================================
-	// Get Audio Chunk
-	// ============================================================
-
-	public static byte[] pull() {
-
-		/*
-		 * Wait until a COMPLETE audio packet exists.
-		 *
-		 * Unlike the old implementation, this does NOT return
-		 * a buffer currently being modified by the capture thread.
-		 */
-		while (running && !closed) {
-
-			try {
-
-				byte[] chunk =
-					audio_queue.take();
-
-
-				/*
-				 * This is a complete, independently-owned
-				 * 960-byte audio packet.
-				 */
-				return chunk;
-			}
-
-			catch (InterruptedException e) {
-
-				Thread.currentThread().interrupt();
-
-				return null;
-			}
-		}
-
-
-		return null;
-	}
-
-
-	// ============================================================
-	// Cleanup
-	// ============================================================
-
-	private static void cleanup_mic() {
-
-		synchronized (lock) {
-
-			if (mic != null) {
-
-				try {
-					mic.stop();
-				}
-
-				catch (Exception ignored) {
-				}
-
-
-				try {
-					mic.close();
-				}
-
-				catch (Exception ignored) {
-				}
-
-
-				mic = null;
-			}
-
-
-			current_mixer = null;
-		}
-	}
-
-
-	// ============================================================
-	// Sleep
-	// ============================================================
-
-	private static void safe_sleep(int millis) {
-
-		try {
-
-			Thread.sleep(millis);
-
-		}
-
-		catch (InterruptedException e) {
-
-			Thread.currentThread().interrupt();
-		}
-	}
-
-
-	// ============================================================
-	// Status
-	// ============================================================
-
-	public static boolean is_up() {
-
-		synchronized (lock) {
-
-			return
-				mic != null &&
-				mic.isOpen() &&
-				running;
-		}
-	}
-
-
-	// ============================================================
-	// Close
-	// ============================================================
-
-	public static void close() {
-
-		running = false;
-
-		closed = true;
-
-
-		if (lifecycle_thread != null) {
-
-			lifecycle_thread.interrupt();
-		}
-
-
-		cleanup_mic();
-
-
-		/*
-		 * Clear buffered audio so old audio isn't played if
-		 * the manager is somehow reused.
-		 */
-		audio_queue.clear();
-	}
+        try {
+            Thread.sleep(millis);
+        }
+        catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
 }

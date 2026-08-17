@@ -15,10 +15,10 @@ public class NetworkMgr {
     public static IfaceInfo selected_interface = null;
 
 
-    public class IfaceInfo {
-        NetworkInterface iface;
-        String ip;
-        short subnet;
+	public class IfaceInfo {
+        public NetworkInterface iface;
+        public String ip;
+        public short subnet;
     }
 
    
@@ -124,6 +124,51 @@ public class NetworkMgr {
 
         return selected_interface.subnet;
 
+    }
+
+	
+	public static List<IfaceInfo> get_all_valid_interfaces() {
+        List<IfaceInfo> valid_interfaces = new ArrayList<>();
+        Enumeration<NetworkInterface> network_interfaces_enumeration = null;
+
+        try {
+            network_interfaces_enumeration = NetworkInterface.getNetworkInterfaces();
+        } catch (Exception e) {
+            System.out.println("[NetworkMgr] Error getting network interfaces, " + e);
+            return valid_interfaces;
+        }
+
+        if (network_interfaces_enumeration == null) {
+            return valid_interfaces;
+        }
+
+        NetworkInterface[] ifaces = Collections.list(network_interfaces_enumeration).toArray(new NetworkInterface[0]);
+        for (int i = 0; i < ifaces.length; i++) {
+            NetworkInterface current_interface = ifaces[i];
+            
+            try {
+                if (current_interface.isVirtual() || !current_interface.isUp()) {
+                    continue;
+                }
+            } catch (Exception e) {
+                continue;
+            }
+
+            List<InterfaceAddress> addresses = current_interface.getInterfaceAddresses();
+            for (int j = 0; j < addresses.size(); j++) {
+                InterfaceAddress current_address = addresses.get(j);
+                if (valid_ip(current_address.getAddress())) {
+                    IfaceInfo iface_info = new NetworkMgr("").new IfaceInfo();
+                    iface_info.iface = current_interface;
+                    iface_info.ip = current_address.getAddress().toString().substring(1);
+                    iface_info.subnet = current_address.getNetworkPrefixLength();
+
+                    valid_interfaces.add(iface_info);
+                }
+            }
+        }
+
+        return valid_interfaces;
     }
 
 }

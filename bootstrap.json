@@ -1,0 +1,12 @@
+{
+  "networkInterface": "",
+  "bellEnabled": true,
+  "gpio_pins": {
+    "PTT": 17,
+    "ALARM": 18
+  },
+  "watchdogEnabled": false,
+  "watchdogSpeaker": "default",
+  "watchdogMic": "default",
+  "watchdogCommand": "echo 'Device disconnected!'"
+}
