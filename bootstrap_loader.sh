@@ -49,23 +49,21 @@ for script_path in "$TARGET_DIR"/*.sh; do
         output_section="$stdout_content"
     fi
 
-    # Append to bootstrap.log
-    {
+	{
         echo "============================="
         echo "Time: $current_time"
         echo "Invoked $script_name with $working_dir"
-        echo -e "Output: \n$output_section"
+        if [ -z "$stdout_content" ]; then
+            echo "No Ouput"
+        else
+            echo -e "Output: \n$stdout_content"
+        fi
         echo ""
         
-        # Include Script error section only if stderr is not empty
-        if [ -s "$stderr_content" ] || [ -n "$stderr_content" ]; then
-            # Note: Depending on whether stderr file has content:
-            if [ -n "$stderr_content" ]; then
-                echo "+++++++++++++++++++++++++++++"
-                echo -e "Script error: \n$stderr_content"
-                echo ""
-            fi
+        if [ -n "$stderr_content" ]; then
+            echo "+++++++++++++++++++++++++++++"
+            echo -e "Script error: \n$stderr_content"
+            echo ""
         fi
-        echo "+++++++++++++++++++++++++++++" # Wait, let's look closely at the requested log format
     } >> "$LOG_FILE"
 done
