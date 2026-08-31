@@ -5,6 +5,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
+// Imported the target components from com.crm
+import com.pasystem.client.RenderMgr;
+import com.pasystem.client.ClockDisplay;
+
 import java.io.File;
 import java.net.http.WebSocket;
 import java.util.Collections;
@@ -61,6 +65,13 @@ public class App {
             new BellTrigger();
         }
 
+        // Clock: enabled ONLY if clock is explicitly present and parses to true
+        Object clockObj = config.get("clock");
+        if (clockObj != null && Boolean.parseBoolean(clockObj.toString())) {
+            new RenderMgr();
+            new ClockDisplay();
+        }
+
         // GPIOMgr: enabled ONLY if gpio_pins map is explicitly provided in the JSON
         Object gpioPinsObj = config.get("gpio_pins");
         if (gpioPinsObj instanceof Map) {
@@ -89,3 +100,4 @@ public class App {
         }
     }
 }
+

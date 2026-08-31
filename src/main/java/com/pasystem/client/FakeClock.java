@@ -18,27 +18,31 @@ public class FakeClock {
     }
 
 
-    public String get_time() {
+    public static String get_time() {
         return Instant.now().plusMillis(offset).toString();
     }
 
-    public String get_time_clean() {
+    public static String get_time_clean() {
         String time = Instant.now().plusMillis(offset).toString();
         return time.substring(time.indexOf("T") + 1, time.indexOf("."));
     }
 
-    public void set_time(String time_to_set) {
+    public static void set_time(String time_to_set) {
         long current_time = Instant.now().toEpochMilli();
         long wanted_time = Instant.parse(time_to_set).toEpochMilli();
 
         offset = wanted_time - current_time;
     }
 	
-	public long get_timestamp() {
+	public static long get_timestamp() {
 		return Instant.now().plusMillis(offset).toEpochMilli();
 	}
 
     public long get_real_timestamp() {
         return Instant.now().toEpochMilli();
     }
+		
+	public static Instant getTimeAsInstant() {
+		 return Instant.now().plusMillis(offset);
+	}
 }

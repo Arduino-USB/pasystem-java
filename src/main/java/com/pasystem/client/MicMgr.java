@@ -304,6 +304,8 @@ public class MicMgr {
                         "[MicMgr] Microphone error: " +
                         e.getMessage()
                     );
+			
+					e.printStackTrace();
                 }
             }
 

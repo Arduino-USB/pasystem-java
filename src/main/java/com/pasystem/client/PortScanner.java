@@ -11,14 +11,21 @@ import java.util.concurrent.Future;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+import java.util.List;
 
 public class PortScanner {
 
 	private static final ExecutorService executor = Executors.newFixedThreadPool(100);
-	public ArrayList<String> scan_network(int port) {
+	public List<String> scan_network(int port) {
 		
 		Map<String,Future<Boolean>> futures = new HashMap<>();
 		String ip = NetworkMgr.get_ip();
+
+		if (NetworkMgr.get_subnet() == null) {
+			System.out.println("[PortScanner] Not connected not a network, skipping");
+			return List.of();
+		}
+
 		int total_ips = 1 << (32 - NetworkMgr.get_subnet());
 		
 

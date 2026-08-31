@@ -6,6 +6,8 @@ import com.pasystem.client.HTTPWrapper;
 import java.util.ArrayList;
 import java.util.Map;
 
+import java.util.List;
+
 public class ConnectionLoop {
 	private static boolean instance_created = false;
 	private static boolean connected = false;
@@ -36,7 +38,7 @@ public class ConnectionLoop {
 			
 				if (!connected) {
 					System.out.println("[ConnectionLoop] Searching for server");
-					ArrayList<String> potential_servers = port_scanner.scan_network(port);
+					List<String> potential_servers = port_scanner.scan_network(port);
 					
 					if (potential_servers.size() == 0 ) {
 						System.out.println("[ConnectionLoop] No servers found, trying again");

@@ -696,8 +696,10 @@ public class SpeakerMgr {
                         }
                     }
                 );
+				
+				clip.start();
 
-
+				clip.loop(Clip.LOOP_CONTINUOUSLY);
                 return clip;
             }
 
