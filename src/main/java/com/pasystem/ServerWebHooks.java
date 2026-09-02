@@ -160,19 +160,15 @@ public class ServerWebHooks {
         return alert_mgr.get_all_alerts();
     }
 
-/*
-    @PostMapping("/set_alert")
-    public Map<String,String> set_alert_status(@RequestBody Map<String, String> client) {
-        alert_mgr.set_alert(client.get("ip"), client.get("alert"));
-        return Map.of("status", "ok");
-    }
 
-    @PostMapping("/remove_alert")
+
+	// IN: {"ip: "IP_ADDRESS", "alert" : "ALERT"}
+    @PostMapping("/remove_client_alert")
     public Map<String,String> remove_alert(@RequestBody Map<String, String> client) {
         alert_mgr.remove_alert(client.get("ip"), client.get("alert"));
         return Map.of("status", "ok");
     }
-*/
+
 	//IN: {"alert" : "string", "enabled" : t/f}
 	@PostMapping("/client_side_alert_trip")
 	public Map<String, String> trip_alert_client_side(HttpServletRequest request, @RequestBody Map<String, Object> data) {
@@ -189,6 +185,8 @@ public class ServerWebHooks {
 		return Map.of("status", "ok");
 		
 	}
+	
+	
 
 
 	

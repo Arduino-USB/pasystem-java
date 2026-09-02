@@ -5,9 +5,9 @@ import java.util.Map;
 import com.pasystem.HTTPWrapper;
 
 public class ClientMgr {
-    private ArrayList<Map<String, String>> clients = new ArrayList<>();
+    private static ArrayList<Map<String, String>> clients = new ArrayList<>();
     private Thread alive_checker_thread = new Thread(() -> alive_checker());
-    private HTTPWrapper requests = new HTTPWrapper();
+    private static HTTPWrapper requests = new HTTPWrapper();
     private int CLIENT_PORT = 6742;
 
     public ClientMgr(){
@@ -28,12 +28,12 @@ public class ClientMgr {
         clients.add(Map.of("ip", ip, "name", uname));
     }
 
-    public synchronized ArrayList<Map<String,String>> get_clients() {
+    public static synchronized ArrayList<Map<String,String>> get_clients() {
         // Return a copy to prevent ConcurrentModificationExceptions if the thread modifies it during an API read
         return new ArrayList<>(clients);
     }
 
-    public synchronized String get_user_from_ip(String ip) {
+    public static synchronized String get_user_from_ip(String ip) {
         for (int i = 0; i < clients.size(); i++) {
             if (clients.get(i).get("ip").equals(ip)) {
                 return clients.get(i).get("name");

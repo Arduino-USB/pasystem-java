@@ -137,10 +137,9 @@ public class BellDataMgr {
 		System.out.println("[BellDataMgr] Writing to config file");
 		
 		try {
-			new ObjectMapper().writeValue(
-				new File(filename),
-				schedules
-			);
+			new ObjectMapper()
+				.writerWithDefaultPrettyPrinter()
+				.writeValue(config, schedules);
 		} catch (Exception e) {
 			System.out.println("[BellDataMgr] Error saving JSON, " + e);
 			System.out.println("[BellDataMgr] Not saving JSON");	

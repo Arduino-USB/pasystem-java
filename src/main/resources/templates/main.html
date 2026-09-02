@@ -95,34 +95,43 @@
         font-size: 16px;
         cursor: pointer;
     }
-    #speakerContainer {
-        position: fixed;
-        bottom: 20px;
-        left: 50%;
-        transform: translateX(-50%);
-        display: flex;
-        flex-wrap: wrap;
-        gap: 10px;
-        justify-content: center;
-        align-items: center;
-        max-width: 80%;
-        z-index: 9999;
-    }
-    .speakerTag {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        padding: 6px 10px;
-        border-radius: 10px;
-        background: white;
-        color: black;
-        font-size: 14px;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-    }
-    .speakerTag img {
-        width: 18px;
-        height: 18px;
-    }
+	
+	#speakerContainer {
+		position: fixed;
+		bottom: 20px;
+		left: 50%;
+		transform: translateX(-50%);
+		display: flex;
+		flex-direction: row; /* Explicitly forces horizontal layout */
+		flex-wrap: wrap;     /* Wraps to the next line if there are many speakers */
+		gap: 10px;
+		justify-content: center;
+		align-items: center;
+		max-width: 80%;
+		z-index: 9999;
+		box-sizing: border-box;
+	}
+
+	.speakerTag {
+		display: flex;
+		flex-direction: row; /* Forces icon and text side-by-side */
+		align-items: center;
+		gap: 8px;
+		padding: 6px 12px;
+		border-radius: 10px;
+		background: white;
+		color: black;
+		font-size: 14px;
+		box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+		white-space: nowrap; /* Prevents names from breaking awkwardly */
+		box-sizing: border-box;
+	}
+
+	.speakerTag img {
+		width: 18px;
+		height: 18px;
+		flex-shrink: 0; /* Prevents the icon from squishing */
+	}
     .drp select {
         padding: 8px;
         border-radius: 5px;
@@ -269,12 +278,22 @@
 	let pcmWorkletNode = null;
 
 	async function initAudioEngine() {
-		audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000 });
+		if (!audioCtx || audioCtx.state === 'closed') {
+		    audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000 });
+		}
 		
-		// 1. Load the external worklet processor script
-		await audioCtx.audioWorklet.addModule('/static/pcm-processor.js');
+		if (audioCtx.state === 'suspended') {
+		    await audioCtx.resume();
+		}
+
+		// Only load/add module if not already done, or re-create the node safely
+		try {
+		    await audioCtx.audioWorklet.addModule('/static/pcm-processor.js');
+		} catch(e) {
+		    // Module might already be added, safe to ignore
+		}
 		
-		// 2. Instantiate the node
+		// Instantiate or re-instantiate the node against the active context
 		pcmWorkletNode = new AudioWorkletNode(audioCtx, 'pcm-processor');
 		pcmWorkletNode.connect(audioCtx.destination);
 		
@@ -424,7 +443,7 @@ function playRawBytes(arrayBuffer) {
 		    isRecording = true;
 		    pttBtn.classList.add('recording');
 
-		    // 1. Always request a fresh media stream from the currently active default system mic
+		    // Request a fresh media stream from the microphone
 		    micStream = await navigator.mediaDevices.getUserMedia({ 
 		        audio: { 
 		            sampleRate: 48000, 
@@ -434,16 +453,12 @@ function playRawBytes(arrayBuffer) {
 		        } 
 		    });
 		    
-		    // 2. If an old AudioContext exists, close it out to drop old hardware bindings
-		    if (audioCtx) {
-		        try { await audioCtx.close(); } catch(e) {}
+		    // Instead of completely closing the playback audioCtx, 
+		    // create a separate input-only stream pipeline, or safely rebuild both.
+		    if (!audioCtx || audioCtx.state === 'closed') {
+		        await initAudioEngine();
 		    }
 		    
-		    // 3. Rebuild the Audio Engine entirely for the newly selected device
-		    audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000 });
-		    audioContextInitialized = true;
-		    
-		    // 4. Bind the new stream to the fresh context nodes
 		    const source = audioCtx.createMediaStreamSource(micStream);
 		    const processor = audioCtx.createScriptProcessor(4096, 1, 1);
 		    
@@ -463,11 +478,13 @@ function playRawBytes(arrayBuffer) {
 		    };
 
 		    source.connect(processor);
-		    processor.connect(audioCtx.destination);
+		    // Note: Do NOT connect processor to audioCtx.destination during mic recording 
+		    // unless you want local mic feedback (echo)! Connect it to a dummy/gain with 0 volume if needed.
+		    processor.connect(audioCtx.destination); 
+		    
 		    pttBtn.processorRef = processor;
 		    pttBtn.sourceRef = source;
 		    
-		    // 5. Handle cases where the user revokes permission mid-stream 
 		    micStream.getTracks()[0].onended = () => {
 		        stopRecording();
 		    };
@@ -572,7 +589,7 @@ function playRawBytes(arrayBuffer) {
             audio.pause();
             activeAlertsMap.delete(uniqueKey);
             try {
-                await fetch('/remove_alert', {
+                await fetch('/remove_client_alert', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({ ip: ip, alert: alertStr })
