@@ -15,7 +15,6 @@
         background-color: #f0f0f0;
         background-size: 100% 100%;
         background-repeat: no-repeat;
-        background-image: url('/static/toliet.jpg');
     }
     .cont {
         display: flex;
@@ -38,7 +37,7 @@
         cursor: pointer;
     }
     .cont .emg.active {
-        background-color: rgba(0, 255, 0, 1);
+        background-color: rgba(0, 255, 0, 1) !important;
     }
     .cont .p2t {
         width: 200px;
@@ -102,8 +101,8 @@
 		left: 50%;
 		transform: translateX(-50%);
 		display: flex;
-		flex-direction: row; /* Explicitly forces horizontal layout */
-		flex-wrap: wrap;     /* Wraps to the next line if there are many speakers */
+		flex-direction: row;
+		flex-wrap: wrap;
 		gap: 10px;
 		justify-content: center;
 		align-items: center;
@@ -114,7 +113,7 @@
 
 	.speakerTag {
 		display: flex;
-		flex-direction: row; /* Forces icon and text side-by-side */
+		flex-direction: row;
 		align-items: center;
 		gap: 8px;
 		padding: 6px 12px;
@@ -123,14 +122,14 @@
 		color: black;
 		font-size: 14px;
 		box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
-		white-space: nowrap; /* Prevents names from breaking awkwardly */
+		white-space: nowrap;
 		box-sizing: border-box;
 	}
 
 	.speakerTag img {
 		width: 18px;
 		height: 18px;
-		flex-shrink: 0; /* Prevents the icon from squishing */
+		flex-shrink: 0;
 	}
     .drp select {
         padding: 8px;
@@ -164,7 +163,39 @@
     
     <br>
     
-    <button class="emg" id="alarmBtn"></button>
+    <div id="alertsContainer" style="display: flex; flex-wrap: wrap; gap: 15px; justify-content: center; align-items: center; max-width: 400px; margin-bottom: 5px;"></div>
+    <button class="btn" id="addAlertModalBtn" onclick="openAddAlertDialog()" style="width: auto; padding: 0 15px; height: 40px; border-radius: 20px; background-color: #006bb3; color: white; cursor: pointer; border: none; font-weight: bold;">+ Add Alert</button>
+</div>
+
+<!-- Add Alert Dialog Modal -->
+<div id="addAlertModal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85); align-items: center; justify-content: center; z-index: 99999;">
+    <div class="box" style="background: white; padding: 30px; border-radius: 12px; text-align: left; width: 320px;">
+        <h3>Add New Alert</h3>
+        <div style="margin-bottom: 15px;">
+            <label style="display: block; font-size: 14px; margin-bottom: 5px; font-weight: bold;">Name (lowercase ASCII only):</label>
+            <input type="text" id="newAlertName" placeholder="e.g. tornado" style="width: 100%; padding: 8px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px;" oninput="this.value = this.value.toLowerCase().replace(/[^a-z]/g, '')">
+        </div>
+        <div style="margin-bottom: 15px;">
+            <label style="display: block; font-size: 14px; margin-bottom: 5px; font-weight: bold;">Color:</label>
+            <input type="color" id="newAlertColor" value="#ff0000" style="width: 100%; height: 40px; border: none; cursor: pointer; background: none;">
+        </div>
+        <div style="margin-bottom: 15px;">
+            <label style="display: block; font-size: 14px; margin-bottom: 5px; font-weight: bold;">Preview / Icon (Stored Files):</label>
+            <select id="newAlertPreviewSelect" style="width: 100%; padding: 8px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; margin-bottom: 8px;">
+                <option value="">-- Select Stored Image --</option>
+            </select>
+        </div>
+        <div style="margin-bottom: 20px; border-top: 1px solid #eee; padding-top: 10px;">
+            <label style="display: block; font-size: 14px; margin-bottom: 5px; font-weight: bold;">Upload New Image:</label>
+            <input type="file" id="newAlertFile" accept=".png,.jpg,.jpeg,.svg" style="width: 100%; font-size: 12px; margin-bottom: 5px;">
+            <button type="button" onclick="uploadNewAlertFile()" style="padding: 6px 12px; font-size: 12px; cursor: pointer; background: #eee; border: 1px solid #ccc; border-radius: 4px;">Upload File</button>
+            <span id="uploadStatus" style="font-size: 12px; margin-left: 8px; color: green;"></span>
+        </div>
+        <div style="display: flex; justify-content: flex-end; gap: 10px;">
+            <button type="button" onclick="closeAddAlertDialog()" style="padding: 8px 16px; background: #ccc; border: none; border-radius: 4px; cursor: pointer;">Cancel</button>
+            <button type="button" onclick="saveNewAlert()" style="padding: 8px 16px; background: #006bb3; color: white; border: none; border-radius: 4px; cursor: pointer;">Save</button>
+        </div>
+    </div>
 </div>
 
 <div id="speakerContainer"></div>
@@ -183,8 +214,8 @@
     let isRecording = false;
     let spacePressed = false;
     
-    // Track alarm toggle state
-    let isAlarmActive = false;
+    // Track active state per alert name
+    let activeAlertsState = {};
 
     // Click trigger setup 
     document.getElementById('enableAudioBtn').onclick = async () => {
@@ -192,11 +223,11 @@
         initAudioEngine();
         initWebSockets();
         
-        // Strict Documentation updates: 1s polling loops ONLY
         setInterval(fetchUsers, 1000);
         setInterval(checkAlerts, 1000);
         
         fetchUsers();
+        renderAlertButtons();
     };
 
     function initAudioEngine() {
@@ -228,9 +259,8 @@
             };
 
             audioIoWs.onclose = () => {
-                // Handle UI Fallbacks on disconnection
                 handleWsDisconnectUi();
-                setTimeout(connectAudioIo, 2000); // Auto-reconnect after 2 seconds
+                setTimeout(connectAudioIo, 2000);
             };
             
             audioIoWs.onerror = () => {
@@ -242,9 +272,8 @@
             speakWs = new WebSocket(protocol + host + '/speak');
             
             speakWs.onclose = () => {
-                // Handle UI Fallbacks on disconnection
                 handleWsDisconnectUi();
-                setTimeout(connectSpeak, 2000); // Auto-reconnect after 2 seconds
+                setTimeout(connectSpeak, 2000);
             };
 
             speakWs.onerror = () => {
@@ -256,13 +285,10 @@
         connectSpeak();
     }
 
-    // Clears active speaker panels and resets selected texts to "--"
     function handleWsDisconnectUi() {
-        // Reset dynamic speakers container UI
         const container = document.getElementById('speakerContainer');
         if (container) container.innerHTML = '';
 
-        // Fallback dropdown text representations to "--"
         const selects = document.querySelectorAll('#userContainer select');
         selects.forEach(select => {
             if (select.options.length > 0 && !select.querySelector('option[value="--"]')) {
@@ -286,32 +312,21 @@
 		    await audioCtx.resume();
 		}
 
-		// Only load/add module if not already done, or re-create the node safely
 		try {
 		    await audioCtx.audioWorklet.addModule('/static/pcm-processor.js');
-		} catch(e) {
-		    // Module might already be added, safe to ignore
-		}
+		} catch(e) {}
 		
-		// Instantiate or re-instantiate the node against the active context
 		pcmWorkletNode = new AudioWorkletNode(audioCtx, 'pcm-processor');
 		pcmWorkletNode.connect(audioCtx.destination);
 		
 		audioContextInitialized = true;
 	}
 
-// 3. Feed your incoming 960-byte WebSocket binary chunks into the worklet
-function playRawBytes(arrayBuffer) {
-    if (!audioContextInitialized || !audioCtx || !pcmWorkletNode) return;
-    
-     // Verify chunk size matches your 960-byte expectation (480 samples * 2 bytes)
-    if (arrayBuffer.byteLength !== 960) {
-        // Optional safety fallback if a variable chunk arrives
+    function playRawBytes(arrayBuffer) {
+        if (!audioContextInitialized || !audioCtx || !pcmWorkletNode) return;
+        if (arrayBuffer.byteLength !== 960) {}
+        pcmWorkletNode.port.postMessage(arrayBuffer, [arrayBuffer]);
     }
-
-    // Transfer the ArrayBuffer safely to the audio worklet thread
-    pcmWorkletNode.port.postMessage(arrayBuffer, [arrayBuffer]);
-}
 
     function renderSpeakers(speakersList) {
         const container = document.getElementById('speakerContainer');
@@ -324,7 +339,6 @@ function playRawBytes(arrayBuffer) {
         });
     }
 
-    // Dynamic dropdown management
     async function fetchUsers() {
         try {
             const res = await fetch('/get_users');
@@ -431,10 +445,8 @@ function playRawBytes(arrayBuffer) {
         speakWs.send("__IPS__ " + targetIPs.join(" "));
     }
 
-    // PTT logic stream integration
     const pttBtn = document.getElementById('pttBtn');
 
-	 // Updated PTT logic that completely recreates stream nodes to prevent device corruption
 	async function startRecording() {
 		if (isRecording) return;
 		syncIPSelectionToWS(); 
@@ -443,7 +455,6 @@ function playRawBytes(arrayBuffer) {
 		    isRecording = true;
 		    pttBtn.classList.add('recording');
 
-		    // Request a fresh media stream from the microphone
 		    micStream = await navigator.mediaDevices.getUserMedia({ 
 		        audio: { 
 		            sampleRate: 48000, 
@@ -453,8 +464,6 @@ function playRawBytes(arrayBuffer) {
 		        } 
 		    });
 		    
-		    // Instead of completely closing the playback audioCtx, 
-		    // create a separate input-only stream pipeline, or safely rebuild both.
 		    if (!audioCtx || audioCtx.state === 'closed') {
 		        await initAudioEngine();
 		    }
@@ -478,8 +487,6 @@ function playRawBytes(arrayBuffer) {
 		    };
 
 		    source.connect(processor);
-		    // Note: Do NOT connect processor to audioCtx.destination during mic recording 
-		    // unless you want local mic feedback (echo)! Connect it to a dummy/gain with 0 volume if needed.
 		    processor.connect(audioCtx.destination); 
 		    
 		    pttBtn.processorRef = processor;
@@ -490,7 +497,6 @@ function playRawBytes(arrayBuffer) {
 		    };
 
 		} catch(e) {
-		    console.error("Failed to safely initialize new mic device pipeline:", e);
 		    isRecording = false;
 		    pttBtn.classList.remove('recording');
 		}
@@ -501,7 +507,6 @@ function playRawBytes(arrayBuffer) {
 		isRecording = false;
 		pttBtn.classList.remove('recording');
 		
-		// Disconnect script processors safely
 		if (pttBtn.processorRef) {
 		    try { pttBtn.processorRef.disconnect(); } catch(e){}
 		}
@@ -509,11 +514,11 @@ function playRawBytes(arrayBuffer) {
 		    try { pttBtn.sourceRef.disconnect(); } catch(e){}
 		}
 		
-		// Stop tracks to let go of hardware control
 		if (micStream) {
 		    micStream.getTracks().forEach(t => t.stop());
 		}
 	}
+
     pttBtn.onmousedown = startRecording;
     pttBtn.onmouseup = stopRecording;
     pttBtn.onmouseleave = stopRecording;
@@ -532,36 +537,222 @@ function playRawBytes(arrayBuffer) {
         }
     };
 
-    // Alarm integration with target toggles to remote IPs
-    document.getElementById('alarmBtn').onclick = async function() {
+    // --- Custom Alerts Management & Rendering ---
+
+    function getCustomAlerts() {
+        try {
+            const data = localStorage.getItem('pa_custom_alerts');
+            return data ? JSON.parse(data) : [];
+        } catch(e) {
+            return [];
+        }
+    }
+
+    function saveCustomAlerts(alerts) {
+        localStorage.setItem('pa_custom_alerts', JSON.stringify(alerts));
+    }
+
+    function renderAlertButtons() {
+        const container = document.getElementById('alertsContainer');
+        if (!container) return;
+        container.innerHTML = '';
+
+        // 1. Default Alarm Button
+        const defaultWrapper = document.createElement('div');
+        defaultWrapper.style.position = 'relative';
+        defaultWrapper.style.display = 'inline-block';
+
+        const alarmBtn = document.createElement('button');
+        alarmBtn.className = 'emg';
+        if (activeAlertsState['alarm']) {
+            alarmBtn.classList.add('active');
+        }
+        alarmBtn.style.backgroundColor = 'rgba(255, 0, 0, 1)';
+        alarmBtn.style.backgroundImage = "url('/static/bell.svg')";
+        alarmBtn.onclick = () => toggleAlert('alarm');
+        defaultWrapper.appendChild(alarmBtn);
+        container.appendChild(defaultWrapper);
+
+        // 2. Custom Alert Buttons
+        const customAlerts = getCustomAlerts();
+        customAlerts.forEach((alertObj, index) => {
+            const wrapper = document.createElement('div');
+            wrapper.style.position = 'relative';
+            wrapper.style.display = 'inline-block';
+
+            const btn = document.createElement('button');
+            btn.className = 'emg';
+            if (activeAlertsState[alertObj.name]) {
+                btn.classList.add('active');
+            }
+            btn.style.backgroundColor = alertObj.color || 'rgba(255, 0, 0, 1)';
+            if (alertObj.icon) {
+                btn.style.backgroundImage = `url('/file_storage/stored/${alertObj.icon}')`;
+            } else {
+                btn.style.backgroundImage = "url('/static/bell.svg')";
+            }
+            btn.onclick = () => toggleAlert(alertObj.name);
+            wrapper.appendChild(btn);
+
+            // Tiny (x) delete button on top
+            const delBtn = document.createElement('button');
+            delBtn.innerText = 'x';
+            delBtn.style.position = 'absolute';
+            delBtn.style.top = '2px';
+            delBtn.style.right = '2px';
+            delBtn.style.width = '20px';
+            delBtn.style.height = '20px';
+            delBtn.style.borderRadius = '50%';
+            delBtn.style.background = 'rgba(0,0,0,0.6)';
+            delBtn.style.color = 'white';
+            delBtn.style.border = 'none';
+            delBtn.style.cursor = 'pointer';
+            delBtn.style.fontSize = '12px';
+            delBtn.style.display = 'flex';
+            delBtn.style.alignItems = 'center';
+            delBtn.style.justifyContent = 'center';
+            delBtn.onclick = (e) => {
+                e.stopPropagation();
+                deleteCustomAlert(index);
+            };
+            wrapper.appendChild(delBtn);
+
+            container.appendChild(wrapper);
+        });
+    }
+
+    async function toggleAlert(alertName) {
         const targets = getSelectedIPs();
-        const alarmBtn = this;
-        
-        // Determine action based on current state toggles
-        const path = isAlarmActive ? '/stop_alert' : '/set_alert';
-        
-        // Dispatch external POST operations
+        const isActive = !!activeAlertsState[alertName];
+        const path = isActive ? '/stop_alert' : '/set_alert';
+
         const requests = targets.map(ip => {
             return fetch(`http://${ip}:6742${path}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ "alert": "alarm" })
+                body: JSON.stringify({ "alert": alertName })
             }).catch(e => console.error(`Failed to target client context: ${ip}`, e));
         });
 
         await Promise.all(requests);
 
-        // Update UI states safely
-        if (!isAlarmActive) {
-            alarmBtn.classList.add('active');
-            isAlarmActive = true;
-        } else {
-            alarmBtn.classList.remove('active');
-            isAlarmActive = false;
-        }
-    };
+        activeAlertsState[alertName] = !isActive;
+        renderAlertButtons();
+    }
 
-    // Cleaned monitoring loops targeting active specs only
+    function deleteCustomAlert(index) {
+        let customAlerts = getCustomAlerts();
+        const removed = customAlerts.splice(index, 1);
+        if (removed && removed.length > 0) {
+            const name = removed[0].name;
+            if (activeAlertsState[name]) {
+                delete activeAlertsState[name];
+            }
+        }
+        saveCustomAlerts(customAlerts);
+        renderAlertButtons();
+    }
+
+    function openAddAlertDialog() {
+        document.getElementById('newAlertName').value = '';
+        document.getElementById('newAlertColor').value = '#ff0000';
+        document.getElementById('newAlertFile').value = '';
+        document.getElementById('uploadStatus').innerText = '';
+        loadStoredFilesForDropdown();
+        document.getElementById('addAlertModal').style.display = 'flex';
+    }
+
+    function closeAddAlertDialog() {
+        document.getElementById('addAlertModal').style.display = 'none';
+    }
+
+    async function loadStoredFilesForDropdown(preselect = '') {
+        const select = document.getElementById('newAlertPreviewSelect');
+        select.innerHTML = '<option value="">-- Select Stored Image --</option>';
+        try {
+            const res = await fetch('/list-stored');
+            if (res.ok) {
+                const files = await res.json();
+                files.forEach(filename => {
+                    const lower = filename.toLowerCase();
+                    if (lower.endsWith('.png') || lower.endsWith('.jpg') || lower.endsWith('.jpeg') || lower.endsWith('.svg')) {
+                        const opt = document.createElement('option');
+                        opt.value = filename;
+                        opt.innerText = filename;
+                        if (filename === preselect) {
+                            opt.selected = true;
+                        }
+                        select.appendChild(opt);
+                    }
+                });
+            }
+        } catch(e) {}
+    }
+
+    async function uploadNewAlertFile() {
+        const fileInput = document.getElementById('newAlertFile');
+        const statusSpan = document.getElementById('uploadStatus');
+        if (!fileInput.files || fileInput.files.length === 0) {
+            alert("Please select a file to upload.");
+            return;
+        }
+        const file = fileInput.files[0];
+        const filename = file.name;
+
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('filename', filename);
+
+        try {
+            statusSpan.innerText = "Uploading...";
+            const res = await fetch('/file_storage/upload-stored', {
+                method: 'POST',
+                body: formData
+            });
+            if (res.ok) {
+                statusSpan.innerText = "Uploaded successfully!";
+                fileInput.value = '';
+                await loadStoredFilesForDropdown(filename);
+            } else {
+                statusSpan.innerText = "Upload failed.";
+            }
+        } catch(e) {
+            statusSpan.innerText = "Error uploading.";
+        }
+    }
+
+    function saveNewAlert() {
+        const nameInput = document.getElementById('newAlertName').value.trim();
+        const colorInput = document.getElementById('newAlertColor').value;
+        const previewSelect = document.getElementById('newAlertPreviewSelect').value;
+
+        if (!nameInput) {
+            alert("Please enter a name for the alert.");
+            return;
+        }
+        if (!/^[a-z]+$/.test(nameInput)) {
+            alert("Alert name must contain lowercase ASCII letters (a-z) only.");
+            return;
+        }
+
+        let customAlerts = getCustomAlerts();
+        if (nameInput === 'alarm' || customAlerts.some(a => a.name === nameInput)) {
+            alert("An alert with this name already exists.");
+            return;
+        }
+
+        customAlerts.push({
+            name: nameInput,
+            color: colorInput,
+            icon: previewSelect || ''
+        });
+
+        saveCustomAlerts(customAlerts);
+        closeAddAlertDialog();
+        renderAlertButtons();
+    }
+
+    // Monitoring loops
     async function checkAlerts() {
         try {
             const res = await fetch('/get_all_alerts');
@@ -580,9 +771,13 @@ function playRawBytes(arrayBuffer) {
     }
 
     function triggerAlertResponse(ip, alertStr, uniqueKey) {
-        const audio = new Audio(`/static/${alertStr}.mp3`);
+        let audio = new Audio(`/static/${alertStr}.mp3`);
         audio.loop = true;
-        audio.play().catch(()=>{});
+        audio.play().catch(()=>{
+            audio = new Audio(`/stored/${alertStr}.mp3`);
+            audio.loop = true;
+            audio.play().catch(()=>{});
+        });
 
         const btnConfig = {};
         btnConfig["DISARM"] = async () => {
