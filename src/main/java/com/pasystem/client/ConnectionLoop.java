@@ -57,7 +57,7 @@ public class ConnectionLoop {
 						requests.get("http://" + connected_ip + ":" + port + "/register", Map.class);
 						System.out.println("[ConnectionLoop] Registered existance to server");
 						while (true) {
-							try {Thread.sleep(1000);} catch (Exception e) {
+							try {Thread.sleep(5000);} catch (Exception e) {
 								System.out.println("[ConnectionLoop] Sleep error, " + e);
 							}
 							

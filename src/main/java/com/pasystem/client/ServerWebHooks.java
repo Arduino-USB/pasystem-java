@@ -32,8 +32,6 @@ public class ServerWebHooks {
 	@PostMapping("/update_settings")
 	public Map<String, String> update_settings(@RequestBody Map<String, String> settings) {
 		SettingsMgr.set_all_settings(settings);
-		CmdExec.run("pactl set-sink-volume @DEFAULT_SINK@ " + settings.get("spk_vol") + "%");
-		CmdExec.run("pactl set-source-volume @DEFAULT_SOURCE@ " + settings.get("mic_vol") + "%");	
 		return Map.of("status", "ok");	
 	}
 
@@ -53,6 +51,32 @@ public class ServerWebHooks {
 	public  Map<String,String> stop_alert(@RequestBody Map<String,String> data) {
 		AlertMgrClient.stop_alert(data.get("alert"));
 		return Map.of("status", "ok");
+	}
+
+	@PostMapping("/mic_override")
+	public  Map<String,String> micOverride() {
+		PTTMgr.micOn();
+		return Map.of("status", "ok");
+	}
+	
+	@PostMapping("/mic_normal")
+	public  Map<String,String> micNormal() {
+		PTTMgr.micOff();
+		return Map.of("status", "ok");
+	}
+
+	@GetMapping("/mic_status")
+	public  Map<String,String> micStatus() {
+		boolean micOverriden = PTTMgr.micStatus();
+		String status;
+
+		if (micOverriden == true) {
+			status = "override";		
+		} else {
+			status = "normal";
+		}
+		
+		return Map.of("status", status);
 	}
 	
     // just need a (/get_settings and /update_settings) and (/get_alerts, /set_alert, /disable_alert)

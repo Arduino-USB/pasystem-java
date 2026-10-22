@@ -7,6 +7,8 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 
+import java.time.Duration;
+
 public class HTTPWrapper {
 
     private final HttpClient client = HttpClient.newHttpClient();
@@ -15,6 +17,7 @@ public class HTTPWrapper {
     public <T> T get(String url, Class<T> type) throws Exception {
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(url))
+				.timeout(Duration.ofSeconds(2))
                 .GET()
                 .build();
 

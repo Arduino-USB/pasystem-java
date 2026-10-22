@@ -466,7 +466,7 @@ public class SixelImage {
         return result;
     }
 
-    // ============================================================
+	// ============================================================
     // JSixel 0.3.0
     // ============================================================
 
@@ -476,10 +476,23 @@ public class SixelImage {
 
         for (int attempt = 1; attempt <= maxRetries; attempt++) {
             try {
+                // Create a fresh buffer instance matching the original image's type (e.g., TYPE_INT_ARGB)
+                // so colors and transparency remain completely unchanged, but the buffer isn't stale.
+                int imageType = image.getType() == 0 ? BufferedImage.TYPE_INT_ARGB : image.getType();
+                BufferedImage attemptImage = new BufferedImage(
+                    image.getWidth(),
+                    image.getHeight(),
+                    imageType
+                );
+                
+                Graphics2D g2d = attemptImage.createGraphics();
+                g2d.drawImage(image, 0, 0, null);
+                g2d.dispose();
+
                 AWTImageBitmap bitmap =
                     new AWTImageBitmap
                         .BufferedImageBitmapBuilder()
-                        .fromImage(image)
+                        .fromImage(attemptImage)
                         .build();
 
                 Bitmap2Sixel sixel =

@@ -85,6 +85,16 @@ public class App {
             }
         }
 
+        // AlarmSender: enabled ONLY if alarmEnabled is true and GPIOMgr is active (requires "ALARM" pin mapping)
+        Object alarmObj = config.get("alarmEnabled");
+        if (alarmObj != null && Boolean.parseBoolean(alarmObj.toString())) {
+            if (gpioPinsObj instanceof Map && ((Map<?, ?>) gpioPinsObj).containsKey("ALARM")) {
+                new AlarmSender();
+            } else {
+                System.out.println("[App] AlarmSender enabled, but 'ALARM' pin is missing from 'gpio_pins' in bootstrap.json.");
+            }
+        }
+
         // SoundWatchdog: enabled ONLY if watchdogEnabled is true AND all parameters exist
         Object watchdogObj = config.get("watchdogEnabled");
         if (watchdogObj != null && Boolean.parseBoolean(watchdogObj.toString())) {
@@ -100,4 +110,3 @@ public class App {
         }
     }
 }
-

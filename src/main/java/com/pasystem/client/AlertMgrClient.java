@@ -51,7 +51,7 @@ public class AlertMgrClient {
             start();
         }
         
-        public void start() {
+        public synchronized void start() {
             try {
                 if (file_path == null) {
                     System.out.println("[SoundAlert] Playing emergency buzzer (no file) '" + alert + "'");
@@ -86,7 +86,7 @@ public class AlertMgrClient {
             }
         }
 
-        public void stop() {
+        public synchronized void stop() {
             if (!playing) {
                 return;
             }
@@ -115,7 +115,7 @@ public class AlertMgrClient {
 
     private static Map<String, SoundAlert> alerts = new HashMap<>();
 
-    public static void set_alert(String alert) {
+    public static synchronized void set_alert(String alert) {
         if (alerts.containsKey(alert)) {
             if (alerts.get(alert).playing()) {
                 System.out.println("[AlertMgrClient] Cannot play alert '" + alert + "' as it is already playing");
@@ -131,7 +131,7 @@ public class AlertMgrClient {
         alerts.put(alert, new SoundAlert(alert));
     }
 
-    public static void stop_alert(String alert) {
+    public static synchronized void stop_alert(String alert) {
         if (!alerts.containsKey(alert)) {    
             System.out.println("[AlertMgrClient] The alert '" + alert + "' cannot be stopped because it doesn't exist");
             return;
