@@ -16,7 +16,6 @@ public class ClientMgr {
     }
 
     public synchronized void add_client(String ip){
-        // Prevent duplicate IP registrations
         for (Map<String, String> client : clients) {
             if (client.get("ip").equals(ip)) {
                 return; 
@@ -29,7 +28,6 @@ public class ClientMgr {
     }
 
     public static synchronized ArrayList<Map<String,String>> get_clients() {
-        // Return a copy to prevent ConcurrentModificationExceptions if the thread modifies it during an API read
         return new ArrayList<>(clients);
     }
 
@@ -43,10 +41,9 @@ public class ClientMgr {
         return "UNKNOWN";
     }
 
-    // Helper method to fetch the name reliably from the device settings
     private String fetch_latest_name(String ip) {
         try {
-            Map<String, Object> response = requests.get("http://" + ip + ":" + CLIENT_PORT + "/get_settings", Map.class);
+            Map response = requests.get("http://" + ip + ":" + CLIENT_PORT + "/get_settings", Map.class);
             if (response != null && response.get("name") != null) {
                 return response.get("name").toString();
             }
@@ -63,7 +60,6 @@ public class ClientMgr {
             try {
                 Thread.sleep(1000);
 
-                // Use synchronized block to prevent race conditions during list updates
                 synchronized (this) {
                     for (int i = clients.size() - 1; i >= 0; i--) {
                         Map<String, String> currentClient = clients.get(i);
@@ -71,20 +67,21 @@ public class ClientMgr {
                         String oldName = currentClient.get("name");
 
                         try {
-                            // 1. Confirm device network status is still online
-                            requests.get("http://" + ip + ":" + CLIENT_PORT + "/alive", Map.class);
+                            // 1. Confirm device network status is still online 
+                            // (Using Object.class or allowing null return for simple 200 OK responses)
+                            requests.get("http://" + ip + ":" + CLIENT_PORT + "/alive", Object.class);
 
                             // 2. Fetch its current configured name
                             String currentName = fetch_latest_name(ip);
 
-                            // 3. If the user edited their name, update the internal array entry
+                            // 3. Update if name changed
                             if (!oldName.equals(currentName)) {
                                 System.out.println("[ClientMgr] Updating name for " + ip + " from '" + oldName + "' to '" + currentName + "'");
                                 clients.set(i, Map.of("ip", ip, "name", currentName));
                             }
 
                         } catch (Exception e) {
-                            // Device timed out or went offline
+                            // Device timed out, threw an error, or went offline -> Remove it
                             System.out.println("[ClientMgr] Removing dead client: " + currentClient);
                             clients.remove(i);
                         }
