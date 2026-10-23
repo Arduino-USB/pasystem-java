@@ -79,5 +79,8 @@ public class ServerWebHooks {
 		return Map.of("status", status);
 	}
 	
-    // just need a (/get_settings and /update_settings) and (/get_alerts, /set_alert, /disable_alert)
+  	@PostMapping("/reboot")
+	public void reboot() {
+		CmdExec.run("reboot");
+	}
 }
