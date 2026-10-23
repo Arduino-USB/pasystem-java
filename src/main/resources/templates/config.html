@@ -56,6 +56,12 @@
         align-items: center;
     }
 
+    .client-actions {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+    }
+
     .client-name-label {
         font-size: 16px;
         color: #2c3e50;
@@ -132,22 +138,36 @@
         background-color: #00558f;
     }
 
-    .config-edit-btn {
+    .config-edit-btn, .config-reboot-btn {
         width: 36px;
         height: 36px;
         border-radius: 8px;
-        background: #f0f2f5 url('/static/pencil.svg') no-repeat center;
-        background-size: 18px 18px;
         border: 1px solid #e1e4e8;
         cursor: pointer;
         transition: background-color 0.2s, transform 0.1s;
+    }
+
+    .config-edit-btn {
+        background: #f0f2f5 url('/static/pencil.svg') no-repeat center;
+        background-size: 18px 18px;
+    }
+
+    .config-reboot-btn {
+        background: #fff5f5 url('/static/reboot.svg') no-repeat center;
+        background-size: 18px 18px;
+        border-color: #fed7d7;
     }
 
     .config-edit-btn:hover {
         background-color: #e2e6ea;
     }
 
-    .config-edit-btn:active {
+    .config-reboot-btn:hover {
+        background-color: #fee2e2;
+        border-color: #fbc5c5;
+    }
+
+    .config-edit-btn:active, .config-reboot-btn:active {
         transform: scale(0.95);
     }
 </style>
@@ -211,7 +231,10 @@
                             <div class="client-name-label">${client.name}</div>
                             <div class="small">IP Address: ${client.ip}</div>
                         </div>
-                        <button class="config-edit-btn" title="Configure Device"></button>
+                        <div class="client-actions">
+                            <button class="config-reboot-btn" title="Reboot Device"></button>
+                            <button class="config-edit-btn" title="Configure Device"></button>
+                        </div>
                     </div>
                     <div class="edit-panel" style="display: none;">
                         <div class="settings-loader-panel">Loading settings profile from device...</div>
@@ -224,7 +247,28 @@
 
             const editBtn = tile.querySelector('.config-edit-btn');
             editBtn.onclick = () => toggleClientSettingsView(tile, client.ip);
+
+            const rebootBtn = tile.querySelector('.config-reboot-btn');
+            rebootBtn.onclick = () => rebootDeviceUnit(client.ip);
         });
+    }
+
+    async function rebootDeviceUnit(ip) {
+        if (!confirm(`Are you sure you want to reboot the hardware unit at IP: ${ip}?`)) {
+            return;
+        }
+
+        try {
+            const targetUrl = `http://${ip}:6742/reboot`;
+            await fetch(targetUrl, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'}
+            });
+            
+            showNotification("Reboot Command Dispatched", `Hard restart sequence successfully initialized for device unit at IP: ${ip}.`);
+        } catch(e) {
+            showNotification("Transmission Failure", `Unable to route reboot command frame downstream to target node at ${ip}.`);
+        }
     }
 
     async function toggleClientSettingsView(tileElement, ip) {
