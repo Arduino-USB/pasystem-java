@@ -4,8 +4,8 @@
   "clock": true,
   "alarmEnabled": true,
   "gpio_pins": {
-    "PTT": 17,
-    "ALARM": 18
+    "PTT": 9,
+    "ALARM": 25
   },
   "watchdogEnabled": false,
   "watchdogSpeaker": "default",
