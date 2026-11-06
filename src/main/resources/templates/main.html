@@ -371,7 +371,7 @@
         transform: scale(0.97);
     }
 
-    #audioOverlay, #addAlertModal {
+    #addAlertModal {
         position: fixed;
         inset: 0;
         background: rgba(0,0,0,0.75);
@@ -388,56 +388,10 @@
         border-radius: 12px;
         box-shadow: 0 10px 30px rgba(0,0,0,0.3);
     }
-
-    #speakerContainer {
-        position: fixed;
-        bottom: 20px;
-        left: 50%;
-        transform: translateX(-50%);
-        display: flex;
-        flex-direction: row;
-        flex-wrap: wrap;
-        gap: 10px;
-        justify-content: center;
-        align-items: center;
-        max-width: 80%;
-        z-index: 9999;
-        pointer-events: none;
-    }
-
-    .speakerTag {
-        display: flex;
-        flex-direction: row;
-        align-items: center;
-        gap: 8px;
-        padding: 8px 16px;
-        border-radius: 20px;
-        background: #222222;
-        color: #ffffff;
-        font-size: 14px;
-        font-weight: 500;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-        white-space: nowrap;
-    }
-
-    .speakerTag img {
-        width: 18px;
-        height: 18px;
-        filter: invert(1);
-    }
 </style>
 {% endblock %}
 
 {% block content %}
-<div id="audioOverlay">
-    <div class="box" style="text-align: center; max-width: 380px;">
-        <h2>Enable Audio & Control Node</h2>
-        <p style="color: #555; font-size: 14px; margin-bottom: 20px;">Microphone permissions are required to initialize the PA transmission engine.</p>
-        <button id="enableAudioBtn" style="padding: 12px 28px; font-size: 16px; background: #006bb3; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold;">Enable System</button>
-        <div id="permErrorMsg" style="color: #d9534f; font-size: 13px; font-weight: bold; margin-top: 12px; display: none;">Microphone access was denied. Please allow permission to proceed.</div>
-    </div>
-</div>
-
 <div class="dashboard-container">
     <!-- Main Center Controls Column -->
     <div class="column main-controls-column">
@@ -500,23 +454,13 @@
         </div>
     </div>
 </div>
-
-<div id="speakerContainer"></div>
 {% endblock %}
 
 {% block scripts %}
-<script src="/static/notifications.js"></script>
 <script>
     let globalUsersList = [];
     let selectedTargetsMap = new Map();
     let clientOverrideStates = new Map();
-    let activeAlertsMap = new Map();
-
-    let audioContextInitialized = false;
-    let audioCtx = null;
-    let pcmWorkletNode = null;
-    let audioIoWs = null;
-    let speakWs = null;
 
     let micStream = null;
     let isRecording = false;
@@ -525,35 +469,15 @@
 
     const pttBtn = document.getElementById('pttBtn');
 
-    // Startup & Pre-flight Permission Gate
-    document.getElementById('enableAudioBtn').onclick = async () => {
-        const errorMsg = document.getElementById('permErrorMsg');
-        errorMsg.style.display = 'none';
+    document.addEventListener('DOMContentLoaded', () => {
+        setInterval(fetchUsers, 1000);
+        setInterval(pollClientMicStatuses, 2000);
 
-        try {
-            // Request permission upfront and release the stream instantly
-            const tempStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            tempStream.getTracks().forEach(t => t.stop());
+        fetchUsers();
+        renderAlertButtons();
+        handleBroadcastToggle();
+    });
 
-            // Success: Remove overlay, start audio engine & sockets
-            document.getElementById('audioOverlay').style.display = 'none';
-            
-            await initAudioEngine();
-            initWebSockets();
-
-            setInterval(fetchUsers, 1000);
-            setInterval(checkAlerts, 1000);
-            setInterval(pollClientMicStatuses, 2000);
-
-            fetchUsers();
-            renderAlertButtons();
-            handleBroadcastToggle();
-        } catch(e) {
-            errorMsg.style.display = 'block';
-        }
-    };
-
-    // Global Key Interceptors: Prevents Page Scrolling & Accidental Focus Toggles
     window.addEventListener('keydown', (e) => {
         if (e.code === 'Space' || e.keyCode === 32) {
             if (e.target.tagName !== 'INPUT' || e.target.type === 'checkbox') {
@@ -579,69 +503,6 @@
         }
     }, { passive: false });
 
-    async function initAudioEngine() {
-        if (!audioCtx || audioCtx.state === 'closed') {
-            audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000 });
-        }
-        if (audioCtx.state === 'suspended') {
-            await audioCtx.resume();
-        }
-        try {
-            await audioCtx.audioWorklet.addModule('/static/pcm-processor.js');
-            pcmWorkletNode = new AudioWorkletNode(audioCtx, 'pcm-processor');
-            pcmWorkletNode.connect(audioCtx.destination);
-        } catch(e) {}
-
-        audioContextInitialized = true;
-    }
-
-    function initWebSockets() {
-        const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
-        const host = window.location.host;
-
-        function connectAudioIo() {
-            audioIoWs = new WebSocket(protocol + host + '/audio_io');
-            audioIoWs.binaryType = 'arraybuffer';
-
-            audioIoWs.onopen = () => { audioIoWs.send("GET_AUDIO_STREAM"); };
-            audioIoWs.onmessage = (event) => {
-                if (typeof event.data === 'string') {
-                    try { renderSpeakers(JSON.parse(event.data)); } catch(e) {}
-                } else {
-                    playRawBytes(event.data);
-                }
-            };
-            audioIoWs.onclose = () => { setTimeout(connectAudioIo, 2000); };
-            audioIoWs.onerror = () => { audioIoWs.close(); };
-        }
-
-        function connectSpeak() {
-            speakWs = new WebSocket(protocol + host + '/speak');
-            speakWs.onclose = () => { setTimeout(connectSpeak, 2000); };
-            speakWs.onerror = () => { speakWs.close(); };
-        }
-
-        connectAudioIo();
-        connectSpeak();
-    }
-
-    function playRawBytes(arrayBuffer) {
-        if (!audioContextInitialized || !audioCtx || !pcmWorkletNode) return;
-        pcmWorkletNode.port.postMessage(arrayBuffer, [arrayBuffer]);
-    }
-
-    function renderSpeakers(speakersList) {
-        const container = document.getElementById('speakerContainer');
-        container.innerHTML = '';
-        speakersList.forEach(speaker => {
-            const tag = document.createElement('div');
-            tag.className = 'speakerTag';
-            tag.innerHTML = `<img src="/static/speaker.svg" alt="spk"> <span>${speaker.name || speaker.ip}</span>`;
-            container.appendChild(tag);
-        });
-    }
-
-    // High-Performance Speech Transmit Logic
     async function startRecording() {
         if (isRecording) return;
 
@@ -660,8 +521,12 @@
                 }
             });
 
+            let audioCtx = window.getAudioCtx ? window.getAudioCtx() : null;
             if (!audioCtx || audioCtx.state === 'closed') {
-                await initAudioEngine();
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000 });
+            }
+            if (audioCtx.state === 'suspended') {
+                await audioCtx.resume();
             }
 
             const source = audioCtx.createMediaStreamSource(micStream);
@@ -677,6 +542,7 @@
                     let s = Math.max(-1, Math.min(1, inputData[i]));
                     view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
                 }
+                const speakWs = window.getSpeakWs ? window.getSpeakWs() : null;
                 if (speakWs && speakWs.readyState === WebSocket.OPEN) {
                     speakWs.send(buffer);
                 }
@@ -705,12 +571,12 @@
         if (micStream) { micStream.getTracks().forEach(t => t.stop()); }
     }
 
-    // Mouse PTT Handlers
-    pttBtn.onmousedown = startRecording;
-    pttBtn.onmouseup = stopRecording;
-    pttBtn.onmouseleave = stopRecording;
+    if (pttBtn) {
+        pttBtn.onmousedown = startRecording;
+        pttBtn.onmouseup = stopRecording;
+        pttBtn.onmouseleave = stopRecording;
+    }
 
-    // Disconnect Purge & User Roster Sync
     async function fetchUsers() {
         try {
             const res = await fetch('/get_users');
@@ -737,7 +603,9 @@
     }
 
     function handleBroadcastToggle() {
-        const isBroadcast = document.getElementById('broadcastToggle').checked;
+        const toggle = document.getElementById('broadcastToggle');
+        if (!toggle) return;
+        const isBroadcast = toggle.checked;
         const targetPanel = document.getElementById('targetPanel');
         
         if (isBroadcast) {
@@ -749,8 +617,11 @@
     }
 
     function filterUserSearch() {
-        const query = document.getElementById('userSearchInput').value.toLowerCase().trim();
+        const searchInput = document.getElementById('userSearchInput');
+        if (!searchInput) return;
+        const query = searchInput.value.toLowerCase().trim();
         const resultsContainer = document.getElementById('searchResultsList');
+        if (!resultsContainer) return;
         resultsContainer.innerHTML = '';
 
         if (!query) return;
@@ -781,7 +652,8 @@
 
     function addTargetUser(user) {
         selectedTargetsMap.set(user.ip, user);
-        document.getElementById('userSearchInput').value = '';
+        const searchInput = document.getElementById('userSearchInput');
+        if (searchInput) searchInput.value = '';
         filterUserSearch();
         renderSendingBox();
         syncIPSelectionToWS();
@@ -796,6 +668,7 @@
 
     function renderSendingBox() {
         const container = document.getElementById('sendingBox');
+        if (!container) return;
         container.innerHTML = '';
 
         if (selectedTargetsMap.size === 0) {
@@ -828,7 +701,8 @@
     }
 
     function getSelectedIPs() {
-        const isBroadcast = document.getElementById('broadcastToggle').checked;
+        const toggle = document.getElementById('broadcastToggle');
+        const isBroadcast = toggle ? toggle.checked : true;
         if (isBroadcast) {
             return globalUsersList.map(u => u.ip);
         }
@@ -836,12 +710,11 @@
     }
 
     function syncIPSelectionToWS() {
-        if (!speakWs || speakWs.readyState !== WebSocket.OPEN) return;
-        const targetIPs = getSelectedIPs();
-        speakWs.send("__IPS__ " + targetIPs.join(" "));
+        if (window.sendIPSelection) {
+            window.sendIPSelection(getSelectedIPs());
+        }
     }
 
-    // Remote Mic Override State Synchronizer
     async function toggleMicOverride(ip) {
         const currentOverride = !!clientOverrideStates.get(ip);
         const endpoint = currentOverride ? '/mic_normal' : '/mic_override';
@@ -871,7 +744,6 @@
         });
     }
 
-    // Custom Emergency Alert System
     function getCustomAlerts() {
         try {
             const data = localStorage.getItem('pa_custom_alerts');
@@ -954,20 +826,25 @@
     }
 
     function openAddAlertDialog() {
-        document.getElementById('newAlertName').value = '';
-        document.getElementById('newAlertColor').value = '#ff0000';
-        document.getElementById('newAlertFile').value = '';
-        document.getElementById('uploadStatus').innerText = '';
-        loadStoredFilesForDropdown();
-        document.getElementById('addAlertModal').style.display = 'flex';
+        const modal = document.getElementById('addAlertModal');
+        if (modal) {
+            document.getElementById('newAlertName').value = '';
+            document.getElementById('newAlertColor').value = '#ff0000';
+            document.getElementById('newAlertFile').value = '';
+            document.getElementById('uploadStatus').innerText = '';
+            loadStoredFilesForDropdown();
+            modal.style.display = 'flex';
+        }
     }
 
     function closeAddAlertDialog() {
-        document.getElementById('addAlertModal').style.display = 'none';
+        const modal = document.getElementById('addAlertModal');
+        if (modal) modal.style.display = 'none';
     }
 
     async function loadStoredFilesForDropdown(preselect = '') {
         const select = document.getElementById('newAlertPreviewSelect');
+        if (!select) return;
         select.innerHTML = '<option value="">-- Select Stored Image --</option>';
         try {
             const res = await fetch('/file_storage/list-stored');
@@ -990,7 +867,7 @@
     async function uploadNewAlertFile() {
         const fileInput = document.getElementById('newAlertFile');
         const statusSpan = document.getElementById('uploadStatus');
-        if (!fileInput.files || fileInput.files.length === 0) return;
+        if (!fileInput || !fileInput.files || fileInput.files.length === 0) return;
 
         const file = fileInput.files[0];
         const formData = new FormData();
@@ -1029,54 +906,7 @@
         closeAddAlertDialog();
         renderAlertButtons();
     }
-
-    async function checkAlerts() {
-        try {
-            const res = await fetch('/get_all_alerts');
-            const data = await res.json();
-
-            data.forEach(item => {
-                const ip = item.ip;
-                item.alerts.forEach(alertStr => {
-                    const uniqueKey = `${ip}_${alertStr}`;
-                    if (!activeAlertsMap.has(uniqueKey)) {
-                        triggerAlertResponse(ip, alertStr, uniqueKey);
-                    }
-                });
-            });
-        } catch(e) {}
-    }
-
-    function triggerAlertResponse(ip, alertStr, uniqueKey) {
-        let audio = new Audio(`/static/${alertStr}.mp3`);
-        audio.loop = true;
-        audio.play().catch(() => {
-            audio = new Audio(`/stored/${alertStr}.mp3`);
-            audio.loop = true;
-            audio.play().catch(() => {});
-        });
-
-        const btnConfig = {};
-        btnConfig["DISARM"] = async () => {
-            audio.pause();
-            activeAlertsMap.delete(uniqueKey);
-            try {
-                await fetch('/remove_client_alert', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ ip: ip, alert: alertStr })
-                });
-            } catch(e) {}
-        };
-
-        const modalHandle = showNotification(
-            `Alert Raised`,
-            `Device IP: ${ip} has triggered code: "${alertStr}"`,
-            btnConfig,
-            true
-        );
-
-        activeAlertsMap.set(uniqueKey, { audio: audio, modal: modalHandle });
-    }
 </script>
 {% endblock %}
+
+
