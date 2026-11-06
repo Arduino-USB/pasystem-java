@@ -8,6 +8,8 @@ import java.net.http.WebSocket;
 import java.nio.ByteBuffer;
 import java.util.concurrent.CompletionStage;
 
+
+
 public class PTTMgr implements WebSocket.Listener {
     private WebSocket webSocket;
     private volatile boolean running = true;
@@ -18,6 +20,7 @@ public class PTTMgr implements WebSocket.Listener {
     @Override
     public void onOpen(WebSocket webSocket) {
         this.webSocket = webSocket;
+		running = true;
         System.out.println("[PTTMgr] Connected");
         webSocket.request(1);
 
