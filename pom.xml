@@ -65,6 +65,23 @@
 			<artifactId>pulse-java</artifactId>
 			<version>2.4.7</version>
 		</dependency>
+			
+		<dependency>
+			<groupId>net.java.dev.jna</groupId>
+			<artifactId>jna</artifactId>
+			<version>5.18.1</version>
+		</dependency>
+		
+		<dependency>
+			<groupId>com.sshtools</groupId>
+			<artifactId>jsixel-lib</artifactId>
+			<version>0.3.0</version>
+		</dependency>
+		<dependency>
+		    <groupId>com.sshtools</groupId>
+		    <artifactId>jsixel-awt</artifactId>
+		    <version>0.3.0</version>
+		</dependency>
     </dependencies>
 
     <build>
