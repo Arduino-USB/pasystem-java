@@ -1,6 +1,8 @@
 {
   "networkInterface": "",
   "bellEnabled": true,
+  "clock": true,
+  "alarmEnabled": true,
   "gpio_pins": {
     "PTT": 17,
     "ALARM": 18
